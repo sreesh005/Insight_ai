@@ -971,15 +971,19 @@ CRITICAL INSTRUCTIONS:
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              system_instruction: {
+                parts: [{ text: systemInstruction }]
+              },
               contents: [
                 {
                   role: 'user',
-                  parts: [{ text: `${systemInstruction}\n\nUser Question: ${userQuery}` }]
+                  parts: [{ text: userQuery }]
                 }
               ],
               generationConfig: {
-                temperature: 0.7,
-                maxOutputTokens: answerLength === 'short' ? 800 : 2048
+                temperature: 0.4,
+                maxOutputTokens: answerLength === 'short' ? 800 : 2048,
+                topP: 0.95
               }
             })
           });

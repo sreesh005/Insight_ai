@@ -100,7 +100,7 @@ export async function executeClientSideChat(params: {
   const pInfo = AI_PROVIDERS[provider] || AI_PROVIDERS.gemini;
   const selectedModel = model || pInfo.defaultModel;
 
-  // 1. Google Gemini (Direct REST API)
+  // 1. Google Gemini (Direct High-Speed REST API)
   if (provider === 'gemini') {
     if (!key) {
       throw new Error('Google Gemini API key is missing. Please add your free Gemini key in AI Provider Settings.');
@@ -108,23 +108,20 @@ export async function executeClientSideChat(params: {
 
     const chatContents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
 
-    // System prompt combined into user turn
-    const combinedSystem = `${systemPrompt}\n\n[CONVERSATION HISTORY]`;
-    let userPromptHistory = '';
-
+    // Include recent conversation context (last 4 turns) for fast token processing
     if (messages && messages.length > 0) {
-      for (const m of messages) {
-        if (m.sender === 'user') {
-          userPromptHistory += `\nUser: ${m.text}`;
-        } else {
-          userPromptHistory += `\nAssistant: ${m.text}`;
-        }
+      const recentMessages = messages.slice(-4);
+      for (const m of recentMessages) {
+        chatContents.push({
+          role: m.sender === 'user' ? 'user' : 'model',
+          parts: [{ text: m.text }]
+        });
       }
     }
 
     chatContents.push({
       role: 'user',
-      parts: [{ text: `${combinedSystem}\n${userPromptHistory}\n\nUser Question: ${userQuestion}` }]
+      parts: [{ text: userQuestion }]
     });
 
     // Sanitize model name: ensure deprecated/unsupported names migrate to gemini-3.7-flash
@@ -144,10 +141,14 @@ export async function executeClientSideChat(params: {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            system_instruction: {
+              parts: [{ text: systemPrompt }]
+            },
             contents: chatContents,
             generationConfig: {
-              temperature: 0.7,
-              maxOutputTokens: maxTokens
+              temperature: 0.4,
+              maxOutputTokens: maxTokens,
+              topP: 0.95
             }
           })
         });
@@ -159,13 +160,18 @@ export async function executeClientSideChat(params: {
         } else {
           const err = await res.json().catch(() => ({}));
           lastError = new Error(err.error?.message || `Google Gemini API error on ${targetModel}: ${res.status}`);
+          // If error is not 404/not-found, don't loop through all models unnecessarily
+          if (res.status !== 404 && res.status !== 400) {
+            break;
+          }
         }
       } catch (err: any) {
         lastError = err;
+        break;
       }
     }
 
-    throw lastError || new Error('Google Gemini API request failed across all models.');
+    throw lastError || new Error('Google Gemini API request failed.');
   }
 
   // 2. Anthropic Claude (Direct Browser Access)

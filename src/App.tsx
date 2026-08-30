@@ -199,7 +199,40 @@ To get AI-powered tutoring, timestamped citations, quiz generation, and math exp
       .join('\n');
 
     try {
-      // 1. Try full-stack Express route first if available
+      // 1. Direct high-speed client-side execution when API key is provided
+      // (Eliminates extra network roundtrips and proxy latency, works seamlessly on Vercel & Chrome Extension)
+      if (activeKey || activeProvider === 'custom') {
+        const systemPrompt = buildSystemPrompt({
+          videoTitle: currentVideo.title,
+          transcriptText,
+          answerLength
+        });
+
+        const replyText = await executeClientSideChat({
+          provider: activeProvider,
+          apiKey: activeKey,
+          model: activeModel,
+          customBaseUrl: activeProvider === 'custom' ? customBaseUrl : undefined,
+          systemPrompt,
+          messages: chatMessages,
+          userQuestion: question,
+          answerLength
+        });
+
+        const citations = extractCitationsFromText(replyText);
+
+        const aiMsg: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          sender: 'assistant',
+          text: replyText,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          citationTimestamps: citations
+        };
+        setChatMessages((prev) => [...prev, aiMsg]);
+        return;
+      }
+
+      // 2. Fallback to Express backend route if no client key is set
       try {
         const response = await fetch('/api/youtube/chat', {
           method: 'POST',
@@ -230,37 +263,8 @@ To get AI-powered tutoring, timestamped citations, quiz generation, and math exp
           return;
         }
       } catch (serverErr) {
-        console.warn('Backend proxy unavailable, falling back to direct browser client:', serverErr);
+        console.warn('Backend proxy unavailable:', serverErr);
       }
-
-      // 2. Direct client-side execution (Works seamlessly on Vercel, Netlify, Static Hosts, and Extensions)
-      const systemPrompt = buildSystemPrompt({
-        videoTitle: currentVideo.title,
-        transcriptText,
-        answerLength
-      });
-
-      const replyText = await executeClientSideChat({
-        provider: activeProvider,
-        apiKey: activeKey,
-        model: activeModel,
-        customBaseUrl: activeProvider === 'custom' ? customBaseUrl : undefined,
-        systemPrompt,
-        messages: chatMessages,
-        userQuestion: question,
-        answerLength
-      });
-
-      const citations = extractCitationsFromText(replyText);
-
-      const aiMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        sender: 'assistant',
-        text: replyText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        citationTimestamps: citations
-      };
-      setChatMessages((prev) => [...prev, aiMsg]);
     } catch (e: any) {
       console.warn('AI execution error:', e);
       const errorMessage = e?.message || 'Failed to communicate with AI provider.';
