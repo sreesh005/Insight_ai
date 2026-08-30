@@ -241,7 +241,7 @@ To get AI-powered tutoring, timestamped citations, quiz generation, and math exp
         answerLength
       });
 
-      const citations = extractCitationsFromText(replyText, currentVideo.transcript);
+      const citations = extractCitationsFromText(replyText);
 
       const aiMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
