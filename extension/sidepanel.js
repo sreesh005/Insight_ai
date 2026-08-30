@@ -11,6 +11,7 @@ let currentVideo = {
 };
 
 let answerLength = 'short';
+let includeTimestamps = true;
 let serverUrl = 'http://localhost:3000';
 let isThinking = false;
 
@@ -250,6 +251,8 @@ const keyTestFeedbackEl = document.getElementById('key-test-feedback');
 const saveSettingsBtnEl = document.getElementById('save-settings-btn');
 const detailShortBtn = document.getElementById('detail-short');
 const detailLongBtn = document.getElementById('detail-long');
+const timeWithBtn = document.getElementById('time-with');
+const timeWithoutBtn = document.getElementById('time-without');
 const promptChips = document.querySelectorAll('.prompt-chip');
 
 // Update Key UI Indicators
@@ -581,6 +584,10 @@ function initSettings() {
         setDetailLength(result.answerLength);
       }
 
+      if (typeof result.includeTimestamps !== 'undefined') {
+        setTimeMode(Boolean(result.includeTimestamps));
+      }
+
       if (result.insight_video_chats) {
         videoChats = result.insight_video_chats || {};
       }
@@ -864,16 +871,16 @@ function formatMessageContent(text) {
   html = html.replace(/^\s*[-*]\s+(.*)$/gm, '<li>$1</li>');
   html = html.replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>');
 
-  // Convert [MM:SS] or [HH:MM:SS] timestamps into interactive buttons
-  html = html.replace(/\[?(\d{1,2}:)?(\d{1,2}:\d{2})\]?/g, (match, hours, minSec) => {
-    const fullTime = (hours || '') + minSec;
-    const parts = fullTime.split(':').map(Number);
-    let totalSeconds = 0;
-    if (parts.length === 3) {
-      totalSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
-    } else if (parts.length === 2) {
-      totalSeconds = parts[0] * 60 + parts[1];
-    }
+  // Convert [MM:SS] or [HH:MM:SS] or **MM:SS** timestamps into interactive buttons
+  html = html.replace(/(?:<strong>)?(?:\[|\()?(?:(\d{1,2}):)?(\d{1,2}:\d{2})(?:\]|\))?(?:<\/strong>)?/g, (match, hours, minSec) => {
+    if (!minSec) return match;
+    const parts = minSec.split(':').map(Number);
+    const h = hours ? parseInt(hours, 10) : 0;
+    const m = parts[0];
+    const s = parts[1];
+    if (s >= 60 || (hours && m >= 60)) return match;
+    const fullTime = h > 0 ? `${String(h).padStart(2, '0')}:${minSec}` : minSec;
+    const totalSeconds = h * 3600 + m * 60 + s;
 
     return `<button class="timestamp-link" data-seconds="${totalSeconds}" title="Jump video to ${fullTime}">⏱️ ${fullTime}</button>`;
   });
@@ -908,15 +915,56 @@ function appendMessageToDOM(role, content) {
   const body = document.createElement('div');
   body.className = 'msg-body';
 
+  const header = document.createElement('div');
+  header.style.display = 'flex';
+  header.style.justifyContent = 'space-between';
+  header.style.alignItems = 'center';
+  header.style.marginBottom = '4px';
+
   const author = document.createElement('div');
   author.className = 'msg-author';
   author.innerText = role === 'user' ? 'You' : 'Insight.ai Tutor';
 
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'msg-copy-btn';
+  copyBtn.style.background = 'transparent';
+  copyBtn.style.border = 'none';
+  copyBtn.style.color = '#94a3b8';
+  copyBtn.style.fontSize = '10px';
+  copyBtn.style.cursor = 'pointer';
+  copyBtn.style.display = 'flex';
+  copyBtn.style.alignItems = 'center';
+  copyBtn.style.gap = '3px';
+  copyBtn.style.padding = '2px 6px';
+  copyBtn.style.borderRadius = '4px';
+  copyBtn.innerHTML = `📋 Copy`;
+  copyBtn.title = 'Copy message to clipboard';
+
+  copyBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const cleanText = content
+      .replace(/```(?:json)?\s*[\s\S]*?\s*```/gi, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    navigator.clipboard.writeText(cleanText || content).then(() => {
+      copyBtn.innerHTML = `✅ Copied!`;
+      copyBtn.style.color = '#10b981';
+      setTimeout(() => {
+        copyBtn.innerHTML = `📋 Copy`;
+        copyBtn.style.color = '#94a3b8';
+      }, 2000);
+    });
+  });
+
+  header.appendChild(author);
+  header.appendChild(copyBtn);
+
   const contentEl = document.createElement('div');
   contentEl.className = 'msg-content';
+  contentEl.style.userSelect = 'text';
   contentEl.innerHTML = formatMessageContent(content);
 
-  body.appendChild(author);
+  body.appendChild(header);
   body.appendChild(contentEl);
   msgEl.appendChild(avatar);
   msgEl.appendChild(body);
@@ -995,14 +1043,16 @@ async function askAI(userQuery) {
     const systemInstruction = `You are Insight.ai, an expert AI tutor helping a viewer learn and master the content of a YouTube video in real-time.
 Current Video: "${videoContext.title}" by ${videoContext.channel}
 User Current Playback Time: ${videoContext.currentTimeFormatted} (${videoContext.currentTime} seconds)
-Detail Level: ${answerLength === 'short' ? 'Concise, high-impact bullet points with bold key terms and interactive timestamps' : 'Comprehensive deep-dive with conceptual breakdown, examples, key formulas, and timestamps'}
+Detail Level: ${answerLength === 'short' ? 'Focused summary (approx. 120-180 words): provide a crisp, direct summary with 1 short overview paragraph, 2-3 key takeaway bullet points, and 1 bottom-line sentence without fluff or padding' : 'Comprehensive deep-dive: exhaustive step-by-step conceptual breakdown and complete analysis'}
+Timestamp Preference: ${includeTimestamps ? 'INCLUDE timestamps formatted as [MM:SS] (e.g., [03:42]) next to referenced insights and key points' : 'DO NOT include timestamps or [MM:SS] markers in your response. Provide clean, direct text explanations without timestamp citations'}
 
 CRITICAL INSTRUCTIONS:
-1. Reference specific video timestamps formatted as [MM:SS] or [HH:MM:SS] (e.g. [02:15]) whenever explaining concepts or addressing the video.
-2. Format cleanly using Markdown with **bold headings**, bullet points, and numbered lists.
-3. If the user asks for a quiz, generate 3 multiple-choice questions with correct answers clearly designated.
-4. If the user asks for key terms, summarize them with timestamps.
-5. Provide actionable, high-clarity tutoring tailored to the viewer.`;
+1. Adequately explain the underlying concepts clearly and concisely. Complete all sentences without cutting off mid-thought.
+${includeTimestamps ? '2. Reference specific video timestamps formatted as [MM:SS] or [HH:MM:SS] (e.g. [02:15]) whenever explaining concepts or addressing the video.' : '2. Provide clean explanations without any timestamp brackets or time codes.'}
+3. Format cleanly using Markdown with **bold headings**, bullet points, and numbered lists.
+4. If the user asks for a quiz, generate 3 multiple-choice questions with correct answers clearly designated.
+5. If the user asks for key terms, summarize them thoroughly with definitions.
+6. Provide actionable, high-clarity tutoring tailored to the viewer.`;
 
     // Strategy 1: Direct Client-Side Provider API (BYOK)
     const hasKeyForProvider = activeProvider === 'custom' ? true : Boolean(key && key.trim().length > 3);
@@ -1025,7 +1075,7 @@ CRITICAL INSTRUCTIONS:
               ],
               generationConfig: {
                 temperature: 0.4,
-                maxOutputTokens: answerLength === 'short' ? 800 : 2048,
+                maxOutputTokens: answerLength === 'short' ? 2048 : 3500,
                 topP: 0.95
               }
             })
@@ -1052,7 +1102,7 @@ CRITICAL INSTRUCTIONS:
               model: selectedModel,
               system: systemInstruction,
               messages: [{ role: 'user', content: userQuery }],
-              max_tokens: answerLength === 'short' ? 800 : 2048
+              max_tokens: answerLength === 'short' ? 2048 : 3500
             })
           });
 
@@ -1101,7 +1151,7 @@ CRITICAL INSTRUCTIONS:
                 { role: 'user', content: userQuery }
               ],
               temperature: 0.7,
-              max_tokens: answerLength === 'short' ? 800 : 2048
+              max_tokens: answerLength === 'short' ? 2048 : 3500
             })
           });
 
@@ -1222,6 +1272,22 @@ function setDetailLength(length) {
 
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
     chrome.storage.local.set({ answerLength: length });
+  }
+}
+
+// Switch Timestamp Preference
+function setTimeMode(withTime) {
+  includeTimestamps = withTime;
+  if (withTime) {
+    if (timeWithBtn) timeWithBtn.classList.add('active');
+    if (timeWithoutBtn) timeWithoutBtn.classList.remove('active');
+  } else {
+    if (timeWithoutBtn) timeWithoutBtn.classList.add('active');
+    if (timeWithBtn) timeWithBtn.classList.remove('active');
+  }
+
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set({ includeTimestamps: withTime });
   }
 }
 
@@ -1429,6 +1495,10 @@ function setupListeners() {
   // Detail Length buttons
   detailShortBtn.addEventListener('click', () => setDetailLength('short'));
   detailLongBtn.addEventListener('click', () => setDetailLength('long'));
+
+  // Timestamp mode buttons
+  if (timeWithBtn) timeWithBtn.addEventListener('click', () => setTimeMode(true));
+  if (timeWithoutBtn) timeWithoutBtn.addEventListener('click', () => setTimeMode(false));
 
   // Quick Prompt Chips
   promptChips.forEach(chip => {

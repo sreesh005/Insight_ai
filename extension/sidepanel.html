@@ -222,12 +222,21 @@
 
     <!-- Input Footer Area -->
     <footer class="app-footer">
-      <!-- Detail Level Toggle -->
-      <div class="detail-control">
-        <span class="detail-label">Detail:</span>
-        <div class="detail-buttons">
-          <button id="detail-short" class="detail-btn active" data-length="short">⚡ Short</button>
-          <button id="detail-long" class="detail-btn" data-length="long">📚 Detailed</button>
+      <!-- Detail Level & Timestamp Toggles -->
+      <div class="footer-controls-row">
+        <div class="detail-control">
+          <span class="detail-label">Detail:</span>
+          <div class="detail-buttons">
+            <button id="detail-short" class="detail-btn active" data-length="short" title="Focused: Clear, thorough explanation without cutting off">⚡ Focused</button>
+            <button id="detail-long" class="detail-btn" data-length="long" title="Deep-Dive: Comprehensive breakdown">📚 Deep</button>
+          </div>
+        </div>
+        <div class="detail-control">
+          <span class="detail-label">Time:</span>
+          <div class="detail-buttons">
+            <button id="time-with" class="detail-btn active" title="Include clickable [MM:SS] timestamps">⏱️ With</button>
+            <button id="time-without" class="detail-btn" title="Plain answer without timestamps">💬 Plain</button>
+          </div>
         </div>
       </div>
 

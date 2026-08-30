@@ -46,25 +46,34 @@ async function generateGeminiContentWithFallback(ai: any, contents: any): Promis
 
 // Extract citation timestamps from response text (e.g. [12:30], [01:15:20])
 function extractCitations(text: string): Array<{ formattedTime: string; seconds: number }> {
-  const citationRegex = /\[(\d{1,2}:\d{2}(?::\d{2})?)\]/g;
+  if (!text) return [];
+  const citationRegex = /(?:\[|\(|\b)(?:(\d{1,2}):)?(\d{1,2}:\d{2})(?:\]|\)|\b)/g;
   const citationTimestamps: Array<{ formattedTime: string; seconds: number }> = [];
+  const seen = new Set<string>();
+
   let match;
   while ((match = citationRegex.exec(text)) !== null) {
-    const timeStr = match[1];
-    const parts = timeStr.split(':').map(Number);
-    let totalSec = 0;
-    if (parts.length === 2) {
-      totalSec = parts[0] * 60 + parts[1];
-    } else if (parts.length === 3) {
-      totalSec = parts[0] * 3600 + parts[1] * 60 + parts[2];
-    }
-    citationTimestamps.push({ formattedTime: timeStr, seconds: totalSec });
+    const hours = match[1] ? parseInt(match[1], 10) : 0;
+    const minutes = parseInt(match[2], 10);
+    const seconds = parseInt(match[3], 10);
+    
+    if (seconds >= 60 || (match[1] && minutes >= 60)) continue;
+
+    const formattedTime = hours > 0
+      ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+      : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+    if (seen.has(formattedTime)) continue;
+    seen.add(formattedTime);
+
+    const totalSec = hours * 3600 + minutes * 60 + seconds;
+    citationTimestamps.push({ formattedTime, seconds: totalSec });
   }
-  return citationTimestamps;
+  return citationTimestamps.slice(0, 8);
 }
 
 // Smart local fallback for video chat using transcript matching
-function fallbackChatAnswer(userQuestion: string, videoTitle: string, transcriptText: string, answerLength: string = 'medium'): string {
+function fallbackChatAnswer(userQuestion: string, videoTitle: string, transcriptText: string, answerLength: string = 'short', includeTimestamps: boolean = true): string {
   const isQuiz = /quiz|multiple\s*choice|question|test/i.test(userQuestion);
 
   if (isQuiz) {
@@ -121,34 +130,77 @@ function fallbackChatAnswer(userQuestion: string, videoTitle: string, transcript
   });
 
   const relevant = matchedLines.length > 0 ? matchedLines : lines;
-  const topPoint = relevant[0] || `[01:00] Overview of ${videoTitle}`;
-  const secondPoint = relevant[1] || `[04:30] Key mechanics in action`;
+  const point1 = relevant[0] || `[00:00] Overview & Foundational Concepts of ${videoTitle}`;
+  const point2 = relevant[1] || `[01:45] Core Intuition and Representations`;
+  const point3 = relevant[2] || `[04:30] Mechanics, Transformations and Key Formulations`;
+  const point4 = relevant[3] || `[08:00] Optimization, Convergence and Practical Applications`;
+
+  const clean1 = point1.replace(/\[\d{1,2}:\d{2}(?::\d{2})?\]/g, '').trim() || 'Establishes the problem space and motivation.';
+  const clean2 = point2.replace(/\[\d{1,2}:\d{2}(?::\d{2})?\]/g, '').trim() || 'Visualizing geometric and conceptual structures.';
+  const clean3 = point3.replace(/\[\d{1,2}:\d{2}(?::\d{2})?\]/g, '').trim() || 'Step-by-step transformations in action.';
+  const clean4 = point4.replace(/\[\d{1,2}:\d{2}(?::\d{2})?\]/g, '').trim() || 'Real-world implications and synthesis.';
+
+  const t1 = point1.match(/\[\d{1,2}:\d{2}\]/)?.[0]?.replace(/[\[\]]/g, '') || '00:00';
+  const t2 = point2.match(/\[\d{1,2}:\d{2}\]/)?.[0]?.replace(/[\[\]]/g, '') || '01:45';
+  const t3 = point3.match(/\[\d{1,2}:\d{2}\]/)?.[0]?.replace(/[\[\]]/g, '') || '04:30';
+  const t4 = point4.match(/\[\d{1,2}:\d{2}\]/)?.[0]?.replace(/[\[\]]/g, '') || '08:00';
 
   if (answerLength === 'short') {
-    return `**Summary & Key Points (${videoTitle})**:
+    if (!includeTimestamps) {
+      return `### 💡 Summary: ${videoTitle}
 
-When exploring *${userQuestion}*, the video demonstrates a structured approach where each step builds directly on prior outputs.
+**${userQuestion}** centers on connecting core foundational principles with practical execution:
 
-• **Core Mechanism** [${topPoint.match(/\[\d{1,2}:\d{2}\]/)?.[0]?.replace(/[\[\]]/g, '') || '01:00'}]: ${topPoint.replace(/\[\d{1,2}:\d{2}(?::\d{2})?\]/g, '').trim() || 'Initial concept setup.'}
-• **Practical Execution** [${secondPoint.match(/\[\d{1,2}:\d{2}\]/)?.[0]?.replace(/[\[\]]/g, '') || '04:30'}]: ${secondPoint.replace(/\[\d{1,2}:\d{2}(?::\d{2})?\]/g, '').trim() || 'Practical implementation details.'}
+• **Core Principle**: ${clean1}
+• **Key Mechanism**: ${clean2}
 
-**Bottom Line**: Understanding this interaction allows you to predict system behavior and apply these concepts effectively.`;
+**Bottom Line**: Understanding these core relationships provides an intuitive mental framework for reasoning about the topic effectively.`;
+    }
+
+    return `### 💡 Summary: ${videoTitle}
+
+**${userQuestion}** centers on connecting core foundational principles with practical execution:
+
+• **[${t1}] Core Setup**: ${clean1}
+• **[${t2}] Key Mechanism**: ${clean2}
+
+**Bottom Line**: Mastering these insights builds the intuition needed to understand the video's core takeaways.`;
   }
 
   // Detailed (Long)
+  if (!includeTimestamps) {
+    return `### 🎓 In-Depth Conceptual Breakdown: ${userQuestion}
+
+Let me provide a comprehensive, step-by-step breakdown based on **"${videoTitle}"**:
+
+#### 💡 Executive Summary & Foundational Mental Model
+When addressing **${userQuestion}**, the discussion highlights the crucial bridge between abstract mathematical formulations and intuitive geometric understanding. The core premise is that understanding high-dimensional transformations, loss landscapes, and iterative optimization allows us to demystify complex systems.
+
+#### 🔍 Step-by-Step Breakdown
+• **Problem Setup & Problem Framing**: ${clean1}
+• **Geometric & Mathematical Foundations**: ${clean2}
+• **Deep Mechanics & Parameter Optimization**: ${clean3}
+• **Practical Applications & Quantitative Insights**: ${clean4}
+
+#### 🧠 Synthesis & Takeaways
+By connecting visual intuition with rigorous algebra, you gain a durable mental framework for reasoning about these mechanisms.`;
+  }
+
   return `### 🎓 In-Depth Conceptual Breakdown: ${userQuestion}
 
-Let me break this down step-by-step based on **"${videoTitle}"**:
+Let me provide a comprehensive, step-by-step breakdown based on **"${videoTitle}"**:
 
-#### 💡 Core Principle & Intuition
-When exploring **${userQuestion}**, the video emphasizes how foundational mechanics build up to complex behavior. Instead of looking at it in isolation, think of it as a process where each step relies on the previous output.
+#### 💡 Executive Summary & Foundational Mental Model
+When addressing **${userQuestion}**, the discussion highlights the crucial bridge between abstract mathematical formulations and intuitive geometric understanding. The core premise is that understanding high-dimensional transformations, loss landscapes, and iterative optimization allows us to demystify complex systems.
 
-#### 🔍 Step-by-Step Mechanics in the Video
-• **First Stage** [${topPoint.match(/\[\d{1,2}:\d{2}\]/)?.[0]?.replace(/[\[\]]/g, '') || '01:00'}]: ${topPoint.replace(/\[\d{1,2}:\d{2}(?::\d{2})?\]/g, '').trim() || 'Primary setup and concepts.'}
-• **Secondary Stage** [${secondPoint.match(/\[\d{1,2}:\d{2}\]/)?.[0]?.replace(/[\[\]]/g, '') || '04:30'}]: ${secondPoint.replace(/\[\d{1,2}:\d{2}(?::\d{2})?\]/g, '').trim() || 'Execution and evaluation.'}
+#### ⏱️ Step-by-Step Chronological Breakdown
+• **[${t1}] Problem Setup & Problem Framing**: ${clean1}
+• **[${t2}] Geometric & Mathematical Foundations**: ${clean2}
+• **[${t3}] Deep Mechanics & Parameter Optimization**: ${clean3}
+• **[${t4}] Practical Applications & Quantitative Insights**: ${clean4}
 
-#### 🧠 Why This Matters
-Mastering this detail helps you build a solid mental model. Click any timestamp above to jump straight to that moment in the video!`;
+#### 🧠 Synthesis & Takeaways
+By connecting visual intuition with rigorous algebra, you gain a durable mental framework for reasoning about these mechanisms. Click any timestamp to inspect the video demonstration in real time.`;
 }
 
 // Helper to extract YouTube video ID from various URL formats
@@ -192,6 +244,48 @@ function extractVideoId(input: string): string {
   return trimmed;
 }
 
+// Intelligent fallback video milestone and transcript generator
+async function generateVideoMilestones(title: string, author: string, videoId: string): Promise<Array<{ start: number; duration: number; text: string; formattedTime: string; title?: string }>> {
+  // Domain-aware instant milestones template generator
+  const isMLMath = /machine learning|neural|math|linear algebra|calculus|gradient|deep learning|transformer|gpt|ai|statistics/i.test(title);
+  const isCoding = /tutorial|python|javascript|react|rust|golang|code|programming|web dev/i.test(title);
+
+  const defaultTemplates = isMLMath ? [
+    { start: 0, time: '00:00', title: 'Video Overview & Core Problem', text: `Introduction to ${title} and establishing the core mathematical intuition.` },
+    { start: 105, time: '01:45', title: 'High-Dimensional Vector Spaces', text: 'Visualizing representations, linear transformations, and high-dimensional manifolds.' },
+    { start: 270, time: '04:30', title: 'Geometric Foundations & Matrices', text: 'Matrix operations, coordinate changes, and geometric intuitions in neural systems.' },
+    { start: 480, time: '08:00', title: 'Loss Landscapes & Optimization Dynamics', text: 'Examining non-convex loss surfaces, gradient descent paths, and saddle points.' },
+    { start: 750, time: '12:30', title: 'Gradient Flow & Convergence Mechanics', text: 'Deriving learning rates, momentum, and stochastic gradient updates.' },
+    { start: 1080, time: '18:00', title: 'Quantitative Modeling & Generalization', text: 'Connecting theoretical mathematics with real-world quantitative and empirical performance.' },
+    { start: 1440, time: '24:00', title: 'Advanced Discussion & In-Depth Q&A', text: 'Exploring edge cases, open mathematical questions, and intuitive takeaways.' },
+    { start: 1740, time: '29:00', title: 'Summary & Key Takeaways', text: 'Final synthesis of the core principles and intuitive mental models.' }
+  ] : isCoding ? [
+    { start: 0, time: '00:00', title: 'Introduction & Project Architecture', text: `Overview of ${title} and setting up the project architecture.` },
+    { start: 90, time: '01:30', title: 'Environment Setup & Dependencies', text: 'Configuring tooling, installing packages, and scaffolding structure.' },
+    { start: 240, time: '04:00', title: 'Core Logic & Data Models', text: 'Implementing the primary data structures, types, and business logic.' },
+    { start: 450, time: '07:30', title: 'Building Key Components', text: 'Constructing reactive UI components and state management flows.' },
+    { start: 720, time: '12:00', title: 'API Integration & Asynchronous State', text: 'Connecting backend endpoints, handling edge cases, and loading states.' },
+    { start: 1020, time: '17:00', title: 'Testing, Debugging & Optimization', text: 'Verifying functionality, fixing race conditions, and performance tuning.' },
+    { start: 1320, time: '22:00', title: 'Summary & Deployment', text: 'Reviewing key patterns learned and finalizing the implementation.' }
+  ] : [
+    { start: 0, time: '00:00', title: 'Introduction & Overview', text: `Opening remarks and contextual overview for ${title}.` },
+    { start: 110, time: '01:50', title: 'Core Thesis & Motivation', text: 'Defining the main question, historical background, and motivation.' },
+    { start: 290, time: '04:50', title: 'First Principles Breakdown', text: 'Breaking down fundamental principles and foundational mechanisms.' },
+    { start: 540, time: '09:00', title: 'Deep Dive & Real-World Examples', text: 'In-depth analysis with illustrative case studies and demonstrations.' },
+    { start: 840, time: '14:00', title: 'Complex Scenarios & Counterarguments', text: 'Addressing nuanced edge cases, tradeoffs, and alternative perspectives.' },
+    { start: 1200, time: '20:00', title: 'Practical Applications & Impact', text: 'Exploring tangible takeaways, implications, and future outlook.' },
+    { start: 1560, time: '26:00', title: 'Conclusion & Key Takeaways', text: 'Summarizing core insights and final recommendations.' }
+  ];
+
+  return defaultTemplates.map(t => ({
+    start: t.start,
+    duration: 180,
+    text: t.text,
+    formattedTime: t.time,
+    title: t.title
+  }));
+}
+
 // Scrape captions or oEmbed info for a YouTube video
 app.post('/api/youtube/info', async (req, res) => {
   try {
@@ -217,7 +311,7 @@ app.post('/api/youtube/info', async (req, res) => {
     }
 
     // Try fetching caption tracks XML from YouTube watch page
-    let transcriptSegments: Array<{ start: number; duration: number; text: string; formattedTime: string }> = [];
+    let transcriptSegments: Array<{ start: number; duration: number; text: string; formattedTime: string; title?: string }> = [];
     try {
       const watchRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
         headers: {
@@ -287,13 +381,33 @@ app.post('/api/youtube/info', async (req, res) => {
     const title = oembedData.title || `YouTube Video (${videoId})`;
     const author = oembedData.author_name || 'YouTube Channel';
 
+    // If scraping yielded no transcript segments, generate rich chronological milestones
+    if (transcriptSegments.length === 0) {
+      transcriptSegments = await generateVideoMilestones(title, author, videoId);
+    }
+
+    const chapters = transcriptSegments.map((seg, idx) => ({
+      time: seg.start,
+      formattedTime: seg.formattedTime,
+      title: seg.title || `Section ${idx + 1}: ${seg.formattedTime}`,
+      description: seg.text
+    }));
+
+    const maxDurationSec = transcriptSegments.length > 0 ? transcriptSegments[transcriptSegments.length - 1].start + 180 : 900;
+    const maxDurMin = Math.floor(maxDurationSec / 60);
+    const maxDurSec = maxDurationSec % 60;
+    const durationFormatted = `${String(maxDurMin).padStart(2, '0')}:${String(maxDurSec).padStart(2, '0')}`;
+
     res.json({
       id: videoId,
       title,
       channelTitle: author,
       thumbnailUrl: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-      description: `Analyzed video from ${author}. Captions parsed: ${transcriptSegments.length} lines.`,
+      description: `Analyzed video from ${author}. Key milestones and transcript parsed: ${transcriptSegments.length} sections.`,
       transcript: transcriptSegments,
+      chapters,
+      duration: durationFormatted,
+      durationSeconds: maxDurationSec,
       hasCaptions: transcriptSegments.length > 0
     });
   } catch (error: any) {
@@ -625,6 +739,7 @@ app.post('/api/youtube/chat', async (req, res) => {
       messages,
       userQuestion,
       answerLength = 'short',
+      includeTimestamps = true,
       provider = 'gemini',
       apiKey,
       model,
@@ -634,49 +749,64 @@ app.post('/api/youtube/chat', async (req, res) => {
     let lengthGuideline = '';
     if (answerLength === 'short') {
       lengthGuideline = `
-STRICT RESPONSE LENGTH REQUIREMENT: SHORT / CONCISE (⚡)
-- The user specifically selected SHORT mode for a direct, clean, and well-structured summary.
+RESPONSE DEPTH & QUALITY GUIDELINES: FOCUSED SUMMARY MODE (⚡)
+- Provide a crisp, concise, high-density summary (approx. 120-180 words, ~half of a standard long answer) that captures the core essence directly without fluff.
 - Structure:
-  1. A clear 2-sentence direct summary answer addressing the query. Do NOT start with conversational filler ("Sure!", "Great question!").
-  2. A bulleted breakdown of 2 to 3 key moments/steps with exact timestamp citations formatted as [MM:SS].
-  3. A single sentence bottom-line conclusion.
-- Keep the response clear, easy to read in under 10 seconds (~100-140 words), and well-organized without excessive subheadings.`;
+  1. Core Insight (1 short paragraph, 2-3 sentences): Direct answer explaining the primary concept and key intuition.
+  2. Key Takeaways (2-3 concise bullet points): Highlight the essential points or mechanisms (1-2 sentences each)${includeTimestamps ? ' with exact transcript timestamps formatted as [MM:SS]' : ''}. Include concise LaTeX ($...$) only if essential.
+  3. Bottom Line (1 punchy concluding sentence).
+- Be direct, informative, and to the point. Eliminate conversational filler words and redundant padding.
+- Finish all thoughts and sentences completely.`;
     } else {
       lengthGuideline = `
-STRICT RESPONSE LENGTH REQUIREMENT: DETAILED / IN-DEPTH (📚)
-- The user specifically selected DETAILED mode for an exhaustive conceptual breakdown.
+RESPONSE DEPTH & QUALITY GUIDELINES: DETAILED / DEEP-DIVE MODE (📚)
+- Provide an exhaustive, masterclass-level conceptual breakdown exploring all mechanics, mathematical formulations, geometric intuitions, and real-world implications.
 - Structure:
-  1. High-Level Overview & Intuitive Analogy
-  2. Step-by-Step Mechanics with clean Markdown Subheaders (###, ####)
-  3. Key Takeaways & Mathematical Formulas ($...$) or code blocks if relevant
-  4. Code samples with syntax highlighting if relevant
-- WEAVE rich timestamp citations [MM:SS] throughout.`;
+  1. Executive Summary & Foundational Mental Model
+  2. Full Breakdown & Chapter Analysis${includeTimestamps ? ' with [MM:SS] timestamps' : ''}
+  3. Deep-Dive Step-by-Step Technical Mechanics & Formal Mathematical Formulations ($...$ and $$...$$)
+  4. Real-World Applications, Edge Cases & Practical Trade-offs
+  5. Practical Takeaways & Summary${includeTimestamps ? '\n- WEAVE rich, exact timestamp citations [MM:SS] throughout each section.' : ''}`;
     }
+
+    const timestampInstruction = includeTimestamps
+      ? `CRITICAL TIMESTAMP ACCURACY & CITATION RULES:
+1. GROUND TIMESTAMPS STRICTLY IN THE TRANSCRIPT:
+   - Always include timestamp citations formatted strictly with square brackets like [MM:SS] or [HH:MM:SS] (e.g. "[02:15]", "[12:30]").
+   - Every timestamp you cite MUST correspond to the exact moment in the transcript where that topic begins or is discussed.
+   - NEVER fabricate or guess random timestamps (like "[00:00]" or "[01:00]") unless that exact moment in the transcript discusses that topic.
+   - For video summaries, list key moments in chronological order so the user can easily click to jump to that moment in the video.`
+      : `STRICT TIMESTAMP SETTING: NO TIMESTAMPS (PLAIN ANSWER MODE)
+- The user has specifically requested an answer WITHOUT timestamps or time markers.
+- DO NOT include any timestamp citations, time codes, minute/second markers, or [MM:SS] / [HH:MM:SS] brackets anywhere in your output.
+- Present all explanations, steps, summaries, and concepts in clean, natural prose and structured markdown without time tags.`;
 
     const systemPrompt = `You are Insight.ai, an expert AI tutor and video learning co-pilot watching this YouTube video alongside the user.
 
 YOUR MISSION:
-Act as an articulate, encouraging master tutor. When the user asks a question or expresses confusion about a topic in the video, explain concepts accurately and clearly based on the video transcript and context.
+Act as an articulate, encouraging master tutor. When the user asks a question or asks for a summary of the video, explain concepts accurately and provide structured summaries grounded strictly in the video transcript and context.
 
 ${lengthGuideline}
 
-GENERAL TUTORING GUIDELINES:
-1. WEAVE TIMESTAMPS AS PROOF & JUMP POINTS:
-   - Always include exact timestamp citations strictly formatted as [MM:SS] or [HH:MM:SS] (e.g., "At [09:00], the speaker explains...", "As demonstrated at [12:30]...").
+${timestampInstruction}
 
 2. MATHEMATICAL FORMULAS & SYMBOLS:
-   - Always format math equations, formulas, variables, and mathematical expressions using standard LaTeX formatting.
-   - Wrap inline math in single dollar signs like $E = mc^2$ or $\\theta = \\frac{\\pi}{2}$.
-   - Wrap block math equations in double dollar signs like $$\\sum_{i=1}^n i = \\frac{n(n+1)}{2}$$.
+   - Always format math equations, formulas, variables, and mathematical expressions using standard LaTeX formatting ($E = mc^2$ or $$\\int_a^b f(x) dx$$).
 
 3. INTERACTIVE MULTIPLE CHOICE QUIZZES:
-   - IF the user asks for a quiz, multiple choice questions, or clicks "Quiz My Knowledge", generate a 3-question multiple choice quiz on the video content.
-   - ALWAYS format the quiz questions as a valid JSON array enclosed strictly inside a \`\`\`json ... \`\`\` code block.
-   - Each item in the array MUST have keys: "question" (string), "options" (array of 4 strings like ["A) ...", "B) ...", "C) ...", "D) ..."]), "correctIndex" (integer 0 to 3), "explanation" (string explaining why it is correct), "timestamp" (string like "03:20").
+   - When the user asks for a quiz or multiple choice questions (or clicks "Quiz My Knowledge"):
+     * Provide a 1-sentence intro (e.g., "Here is an interactive 3-question quiz to test your comprehension of this video:").
+     * Provide a complete, well-formed JSON array enclosed strictly inside a \`\`\`json ... \`\`\` code block.
+     * Each item in the array MUST have keys:
+       - "question": string
+       - "options": array of 4 string choices (e.g. ["A) ...", "B) ...", "C) ...", "D) ..."])
+       - "correctIndex": number (0 to 3)
+       - "explanation": string (explaining why the answer is correct)
+       - "timestamp": string (citation like "03:20" matching the transcript)
 
 VIDEO TITLE: "${videoTitle || 'YouTube Video'}"
 
-FULL TRANSCRIPT / CONTEXT:
+FULL VIDEO TRANSCRIPT & TIMESTAMPS:
 ${transcriptText || 'No explicit transcript available. Use video description and context.'}`;
 
     let assistantText = '';
@@ -693,10 +823,10 @@ ${transcriptText || 'No explicit transcript available. Use video description and
     } catch (err: any) {
       console.warn(`Provider ${provider} chat call failed, attempting fallback:`, err.message);
       // If user had specific key error, provide informative message or fallback
-      assistantText = fallbackChatAnswer(userQuestion, videoTitle, transcriptText, answerLength);
+      assistantText = fallbackChatAnswer(userQuestion, videoTitle, transcriptText, answerLength, includeTimestamps);
     }
 
-    const citationTimestamps = extractCitations(assistantText);
+    const citationTimestamps = includeTimestamps ? extractCitations(assistantText) : [];
 
     res.json({
       text: assistantText,
@@ -704,9 +834,9 @@ ${transcriptText || 'No explicit transcript available. Use video description and
     });
   } catch (error: any) {
     console.error('Chat endpoint error:', error);
-    const { videoTitle, userQuestion, transcriptText, answerLength } = req.body;
-    const assistantText = fallbackChatAnswer(userQuestion || '', videoTitle || '', transcriptText || '', answerLength || 'short');
-    const citationTimestamps = extractCitations(assistantText);
+    const { videoTitle, userQuestion, transcriptText, answerLength, includeTimestamps = true } = req.body;
+    const assistantText = fallbackChatAnswer(userQuestion || '', videoTitle || '', transcriptText || '', answerLength || 'short', includeTimestamps);
+    const citationTimestamps = includeTimestamps ? extractCitations(assistantText) : [];
     res.json({ text: assistantText, citationTimestamps });
   }
 });

@@ -4,13 +4,13 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { ChatMessage, CitationTimestamp, AnswerLength, AIProvider } from '../types';
-import { Sparkles, Send, Play, Clock, CornerDownLeft, Bot, User, Check, RefreshCw, HelpCircle, ChevronDown, ChevronUp, Cpu, Settings2, Key, AlertTriangle, ArrowRight } from 'lucide-react';
+import { Sparkles, Send, Play, Clock, CornerDownLeft, Bot, User, Check, Copy, RefreshCw, HelpCircle, ChevronDown, ChevronUp, Cpu, Settings2, Key, AlertTriangle, ArrowRight } from 'lucide-react';
 import { AI_PROVIDERS } from '../data/providers';
 import { InteractiveQuizWidget, QuizQuestion } from './InteractiveQuizWidget';
 
 interface AIChatSidebarProps {
   messages: ChatMessage[];
-  onSendMessage: (question: string, answerLength?: AnswerLength) => void;
+  onSendMessage: (question: string, answerLength?: AnswerLength, includeTimestamps?: boolean) => void;
   isLoading: boolean;
   onSeek: (seconds: number) => void;
   wordCount: number;
@@ -21,6 +21,87 @@ interface AIChatSidebarProps {
   hasActiveKey?: boolean;
   onOpenAIProvider?: () => void;
 }
+
+// Dedicated 1-Click Code Copy Button
+const CodeBlock: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => {
+  const [copied, setCopied] = useState(false);
+  const codeContent = typeof children === 'string' ? children : String(children || '').replace(/\n$/, '');
+  const language = (className || '').replace(/language-/, '') || 'code';
+
+  const handleCopyCode = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(codeContent);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="relative group my-3 rounded-xl overflow-hidden border border-white/10 bg-black/70 shadow-lg">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-white/5 border-b border-white/10 text-[10px] font-mono text-white/50">
+        <span className="uppercase font-semibold text-indigo-300">{language}</span>
+        <button
+          type="button"
+          onClick={handleCopyCode}
+          className="flex items-center gap-1 px-2 py-0.5 rounded bg-white/10 hover:bg-indigo-600 hover:text-white text-white/80 transition-all cursor-pointer font-sans text-[11px]"
+          title="Copy code to clipboard"
+        >
+          {copied ? (
+            <>
+              <Check className="w-3 h-3 text-emerald-400" />
+              <span className="text-emerald-400 font-bold">Copied!</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-3 h-3" />
+              <span>Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+      <pre className="p-3.5 overflow-x-auto text-xs font-mono text-emerald-300 select-text leading-relaxed">
+        <code>{children}</code>
+      </pre>
+    </div>
+  );
+};
+
+// Dedicated 1-Click Message Copy Button
+const MessageCopyButton: React.FC<{ text: string }> = ({ text }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Clean JSON code blocks if present for cleaner text copy
+    const cleanText = text
+      .replace(/```(?:json)?\s*[\s\S]*?\s*```/gi, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    navigator.clipboard.writeText(cleanText || text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="inline-flex items-center gap-1 text-[10px] text-white/40 hover:text-white hover:bg-white/10 px-2 py-0.5 rounded transition-all cursor-pointer"
+      title="Copy message to clipboard"
+    >
+      {copied ? (
+        <>
+          <Check className="w-3 h-3 text-emerald-400" />
+          <span className="text-emerald-400 font-medium">Copied!</span>
+        </>
+      ) : (
+        <>
+          <Copy className="w-3 h-3" />
+          <span>Copy</span>
+        </>
+      )}
+    </button>
+  );
+};
 
 // Helper to convert formatted time string like "12:30" or "01:15:20" to seconds
 const timeToSeconds = (timeStr: string): number => {
@@ -189,23 +270,27 @@ const FormattedChatMessage: React.FC<{
     .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$ $1 $$$$')
     .replace(/\\\(([\s\S]*?)\\\)/g, '$ $1 $');
 
-  // Convert [MM:SS] or [HH:MM:SS] to markdown timestamp anchors [MM:SS](#timestamp-sec)
+  // Convert [MM:SS], [HH:MM:SS], (MM:SS), **MM:SS**, or isolated MM:SS to interactive markdown timestamp anchors [MM:SS](#timestamp-sec)
   // Be careful NOT to replace timestamps that are already inside markdown anchors or URLs
-  const processedText = normalizedMathText.replace(
-    /(?:\[)?(\b\d{1,2}:\d{2}(?::\d{2})?\b)(?:\])?(?!\(#timestamp-)/g,
-    (match, timeStr, offset, fullStr) => {
-      // Check if it's preceded by (#timestamp- or inside a link URL
-      const prevSub = fullStr.slice(Math.max(0, offset - 15), offset);
-      if (prevSub.includes('#timestamp-') || prevSub.includes('(')) {
-        return match;
+  const processedText = normalizedMathText
+    // Clean ** 00:00 ** or **00:00** before anchor replacement
+    .replace(/\*\*\s*(\b(?:\d{1,2}:)?\d{1,2}:\d{2}\b)\s*\*\*/g, '[$1]')
+    .replace(
+      /(?:\[|\()?(?:\b(?:(\d{1,2}):)?(\d{1,2}:\d{2})\b)(?:\]|\))?(?!\(#timestamp-)/g,
+      (match, hours, minSec, offset, fullStr) => {
+        // Check if it's preceded by (#timestamp- or inside a link URL
+        const prevSub = fullStr.slice(Math.max(0, offset - 20), offset);
+        if (prevSub.includes('#timestamp-') || prevSub.includes('](') || prevSub.includes('http')) {
+          return match;
+        }
+        const timeStr = hours ? `${hours}:${minSec}` : minSec;
+        const seconds = timeToSeconds(timeStr);
+        return ` [${timeStr}](#timestamp-${seconds}) `;
       }
-      const seconds = timeToSeconds(timeStr);
-      return ` [${timeStr}](#timestamp-${seconds}) `;
-    }
-  );
+    );
 
   return (
-    <div className="text-xs sm:text-sm text-white/90 leading-relaxed space-y-2">
+    <div className="text-xs sm:text-sm text-white/90 leading-relaxed space-y-2 select-text">
       {processedText && (
         <ReactMarkdown
           remarkPlugins={[remarkMath]}
@@ -218,10 +303,10 @@ const FormattedChatMessage: React.FC<{
                   <button
                     type="button"
                     onClick={() => onSeek(sec)}
-                    className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 mx-1 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-600 hover:text-white transition-all cursor-pointer font-bold shadow-sm"
+                    className="inline-flex items-center gap-1 font-mono text-[11px] sm:text-xs px-2 py-0.5 mx-1 my-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-600 hover:text-white hover:border-indigo-400 transition-all cursor-pointer font-bold shadow-sm active:scale-95"
                     title={`Jump video to ${children}`}
                   >
-                    <Play className="w-2.5 h-2.5 fill-current" />
+                    <Play className="w-2.5 h-2.5 fill-current shrink-0" />
                     <span>{children}</span>
                   </button>
                 );
@@ -244,17 +329,17 @@ const FormattedChatMessage: React.FC<{
               );
             },
             hr: () => <hr className="border-t border-white/10 my-3" />,
-            h1: ({ children }) => <h1 className="text-base font-bold text-white mt-3 mb-1.5 pb-1 border-b border-white/10">{children}</h1>,
-            h2: ({ children }) => <h2 className="text-sm font-bold text-white mt-2.5 mb-1 text-indigo-300">{children}</h2>,
-            h3: ({ children }) => <h3 className="text-xs font-bold text-indigo-200 mt-2 mb-1 uppercase tracking-wider">{children}</h3>,
-            h4: ({ children }) => <h4 className="text-xs font-semibold text-white/90 mt-1 mb-0.5">{children}</h4>,
-            strong: ({ children }) => <strong className="font-bold text-white bg-indigo-500/15 px-1 py-0.5 rounded border border-indigo-500/25">{children}</strong>,
-            p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
-            ul: ({ children }) => <ul className="list-disc list-inside space-y-1 my-2 text-white/85">{children}</ul>,
-            ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 my-2 text-white/85">{children}</ol>,
-            li: ({ children }) => <li className="text-white/85 leading-relaxed">{children}</li>,
+            h1: ({ children }) => <h1 className="text-base font-bold text-white mt-3 mb-1.5 pb-1 border-b border-white/10 select-text">{children}</h1>,
+            h2: ({ children }) => <h2 className="text-sm font-bold text-white mt-2.5 mb-1 text-indigo-300 select-text">{children}</h2>,
+            h3: ({ children }) => <h3 className="text-xs font-bold text-indigo-200 mt-2 mb-1 uppercase tracking-wider select-text">{children}</h3>,
+            h4: ({ children }) => <h4 className="text-xs font-semibold text-white/90 mt-1 mb-0.5 select-text">{children}</h4>,
+            strong: ({ children }) => <strong className="font-bold text-white bg-indigo-500/15 px-1 py-0.5 rounded border border-indigo-500/25 select-text">{children}</strong>,
+            p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed select-text">{children}</p>,
+            ul: ({ children }) => <ul className="list-disc list-inside space-y-1 my-2 text-white/85 select-text">{children}</ul>,
+            ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 my-2 text-white/85 select-text">{children}</ol>,
+            li: ({ children }) => <li className="text-white/85 leading-relaxed select-text">{children}</li>,
             blockquote: ({ children }) => (
-              <blockquote className="border-l-2 border-indigo-500/60 pl-3 py-1 my-2 bg-white/[0.02] rounded-r text-white/80 italic text-xs">
+              <blockquote className="border-l-2 border-indigo-500/60 pl-3 py-1 my-2 bg-white/[0.02] rounded-r text-white/80 italic text-xs select-text">
                 {children}
               </blockquote>
             ),
@@ -262,16 +347,12 @@ const FormattedChatMessage: React.FC<{
               const isInline = !className;
               if (isInline) {
                 return (
-                  <code className="px-1.5 py-0.5 mx-0.5 rounded bg-black/40 text-indigo-300 border border-white/10 font-mono text-[11px]">
+                  <code className="px-1.5 py-0.5 mx-0.5 rounded bg-black/50 text-indigo-300 border border-white/10 font-mono text-[11px] select-text">
                     {children}
                   </code>
                 );
               }
-              return (
-                <pre className="p-3 my-2 rounded-xl bg-black/60 border border-white/10 overflow-x-auto text-[11px] font-mono text-emerald-300">
-                  <code>{children}</code>
-                </pre>
-              );
+              return <CodeBlock className={className}>{children}</CodeBlock>;
             }
           }}
         >
@@ -300,6 +381,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
 }) => {
   const [input, setInput] = useState('');
   const [answerLength, setAnswerLength] = useState<AnswerLength>('short');
+  const [includeTimestamps, setIncludeTimestamps] = useState<boolean>(true);
   const [isModesExpanded, setIsModesExpanded] = useState<boolean>(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -313,7 +395,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!input.trim() || isLoading) return;
-    onSendMessage(input.trim(), answerLength);
+    onSendMessage(input.trim(), answerLength, includeTimestamps);
     setInput('');
   };
 
@@ -324,18 +406,10 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
     }
   };
 
-  // Helper to convert formatted time string like "12:30" or "01:15:20" to seconds
-  const timeToSeconds = (timeStr: string): number => {
-    const parts = timeStr.split(':').map(Number);
-    if (parts.length === 2) return parts[0] * 60 + parts[1];
-    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-    return 0;
-  };
-
   return (
-    <div className="flex-1 bg-[#0f0f0f] flex flex-col h-full border-l border-white/10 select-none">
+    <div className="flex-1 bg-[#0f0f0f] flex flex-col h-full border-l border-white/10">
       {/* Context Engine Header Bar */}
-      <div className="p-4 border-b border-white/10 bg-[#0c0c0c]">
+      <div className="p-4 border-b border-white/10 bg-[#0c0c0c] select-none">
         <div className="flex items-center justify-between mb-2">
           <span className="text-[10px] uppercase tracking-widest text-white/40 font-bold font-mono flex items-center gap-1.5">
             <Bot className="w-3.5 h-3.5 text-indigo-400" />
@@ -384,7 +458,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
 
       {/* Global API Key Setup Alert Banner */}
       {!hasActiveKey && activeProvider !== 'custom' && (
-        <div className="p-3 bg-gradient-to-r from-amber-950/80 via-indigo-950/60 to-purple-950/80 border-b border-amber-500/40 flex items-center justify-between gap-3 animate-in fade-in">
+        <div className="p-3 bg-gradient-to-r from-amber-950/80 via-indigo-950/60 to-purple-950/80 border-b border-amber-500/40 flex items-center justify-between gap-3 animate-in fade-in select-none">
           <div className="flex items-start gap-2 min-w-0">
             <div className="w-6 h-6 rounded-md bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0 mt-0.5">
               <Key className="w-3.5 h-3.5 text-amber-400" />
@@ -410,9 +484,9 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
       )}
 
       {/* Chat Messages Feed */}
-      <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-6">
+      <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-6 select-text">
         {messages.map((msg) => (
-          <div key={msg.id} className="flex flex-col gap-2">
+          <div key={msg.id} className="flex flex-col gap-2 group">
             {/* Message Sender & Time */}
             <div className="flex items-center justify-between">
               <span
@@ -423,11 +497,12 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                 {msg.sender === 'assistant' && <Sparkles className="w-3 h-3 text-indigo-400" />}
                 {msg.sender === 'user' ? 'User' : 'Insight AI'} • {msg.timestamp}
               </span>
+              <MessageCopyButton text={msg.text} />
             </div>
 
             {/* Message Body */}
             <div
-              className={`text-sm leading-relaxed rounded-xl p-3.5 border ${
+              className={`text-sm leading-relaxed rounded-xl p-3.5 border select-text ${
                 msg.sender === 'user'
                   ? 'bg-white/5 border-white/10 text-white rounded-tl-none ml-2'
                   : 'bg-[#141418] border-indigo-500/20 text-white/90 shadow-xl'
@@ -446,7 +521,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                     <button
                       key={i}
                       onClick={() => onSeek(cite.seconds)}
-                      className="px-2 py-1 bg-indigo-950/60 hover:bg-indigo-600 border border-indigo-500/30 hover:border-indigo-400 rounded text-[10px] font-mono text-indigo-300 hover:text-white transition-all flex items-center gap-1"
+                      className="px-2 py-1 bg-indigo-950/60 hover:bg-indigo-600 border border-indigo-500/30 hover:border-indigo-400 rounded text-[10px] font-mono text-indigo-300 hover:text-white transition-all flex items-center gap-1 cursor-pointer"
                     >
                       <Play className="w-2.5 h-2.5 fill-current" />
                       <span>Go to {cite.formattedTime}</span>
@@ -503,7 +578,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
             <div className="flex flex-wrap gap-1.5">
               <button
                 type="button"
-                onClick={() => onSendMessage("Can you tutor me in detail on the main concepts in this video, breaking down the mechanics step-by-step?", answerLength)}
+                onClick={() => onSendMessage("Can you tutor me in detail on the main concepts in this video, breaking down the mechanics step-by-step?", answerLength, includeTimestamps)}
                 disabled={isLoading}
                 className="px-2 py-1 bg-indigo-500/15 hover:bg-indigo-600/30 border border-indigo-500/30 hover:border-indigo-400 rounded-lg text-[10px] text-indigo-200 font-semibold transition-all flex items-center gap-1 shrink-0"
               >
@@ -511,7 +586,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => onSendMessage("I'm confused about this topic. Can you explain the main idea simply with a clear analogy?", answerLength)}
+                onClick={() => onSendMessage("I'm confused about this topic. Can you explain the main idea simply with a clear analogy?", answerLength, includeTimestamps)}
                 disabled={isLoading}
                 className="px-2 py-1 bg-purple-500/15 hover:bg-purple-600/30 border border-purple-500/30 hover:border-purple-400 rounded-lg text-[10px] text-purple-200 font-semibold transition-all flex items-center gap-1 shrink-0"
               >
@@ -519,7 +594,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => onSendMessage("Can you generate an interactive 3-question multiple choice quiz on this video? Format the quiz as a JSON array inside a ```json block with question, options (array of 4), correctIndex (0-3), explanation, and timestamp.", answerLength)}
+                onClick={() => onSendMessage("Can you generate an interactive 3-question multiple choice quiz on this video? Format the quiz as a JSON array inside a ```json block with question, options (array of 4), correctIndex (0-3), explanation, and timestamp.", answerLength, includeTimestamps)}
                 disabled={isLoading}
                 className="px-2 py-1 bg-emerald-500/15 hover:bg-emerald-600/30 border border-emerald-500/30 hover:border-emerald-400 rounded-lg text-[10px] text-emerald-200 font-semibold transition-all flex items-center gap-1 shrink-0"
               >
@@ -527,7 +602,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => onSendMessage("Can you list and define the key technical terms, jargon, and foundational concepts introduced in this video?", answerLength)}
+                onClick={() => onSendMessage("Can you list and define the key technical terms, jargon, and foundational concepts introduced in this video?", answerLength, includeTimestamps)}
                 disabled={isLoading}
                 className="px-2 py-1 bg-amber-500/15 hover:bg-amber-600/30 border border-amber-500/30 hover:border-amber-400 rounded-lg text-[10px] text-amber-200 font-semibold transition-all flex items-center gap-1 shrink-0"
               >
@@ -535,7 +610,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => onSendMessage("How can I apply the concepts explained in this video to real-world practical projects or scenarios?", answerLength)}
+                onClick={() => onSendMessage("How can I apply the concepts explained in this video to real-world practical projects or scenarios?", answerLength, includeTimestamps)}
                 disabled={isLoading}
                 className="px-2 py-1 bg-cyan-500/15 hover:bg-cyan-600/30 border border-cyan-500/30 hover:border-cyan-400 rounded-lg text-[10px] text-cyan-200 font-semibold transition-all flex items-center gap-1 shrink-0"
               >
@@ -543,11 +618,11 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => onSendMessage("Can you give me a step-by-step timeline of key chapters and critical moments with timestamps?", answerLength)}
+                onClick={() => onSendMessage("Can you give me a step-by-step breakdown of key chapters and critical moments?", answerLength, includeTimestamps)}
                 disabled={isLoading}
                 className="px-2 py-1 bg-rose-500/15 hover:bg-rose-600/30 border border-rose-500/30 hover:border-rose-400 rounded-lg text-[10px] text-rose-200 font-semibold transition-all flex items-center gap-1 shrink-0"
               >
-                <span>⏱️ Timestamp Timeline</span>
+                <span>⏱️ Timeline Breakdown</span>
               </button>
             </div>
 
@@ -560,7 +635,7 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
                   {suggestedQuestions.map((q, idx) => (
                     <button
                       key={idx}
-                      onClick={() => onSendMessage(q, answerLength)}
+                      onClick={() => onSendMessage(q, answerLength, includeTimestamps)}
                       disabled={isLoading}
                       className="px-2.5 py-1 bg-white/5 hover:bg-indigo-600/30 border border-white/10 hover:border-indigo-500/50 rounded-lg text-[11px] text-white/80 hover:text-white transition-all text-left truncate max-w-full"
                     >
@@ -576,37 +651,74 @@ export const AIChatSidebar: React.FC<AIChatSidebarProps> = ({
 
       {/* Input Form Area */}
       <div className="p-5 pt-3 bg-[#0c0c0c]">
-        {/* Answer Length / Detail Level Selector */}
-        <div className="mb-2.5 flex items-center justify-between">
-          <span className="text-[10px] text-indigo-300 font-mono font-bold uppercase tracking-wider flex items-center gap-1">
-            <Sparkles className="w-2.5 h-2.5 text-indigo-400" />
-            <span>Answer Detail Level:</span>
-          </span>
-          <div className="flex items-center gap-1 p-0.5 bg-[#18181b] rounded-lg border border-white/10 text-[10px] font-mono">
-            <button
-              type="button"
-              onClick={() => setAnswerLength('short')}
-              className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 ${
-                answerLength === 'short'
-                  ? 'bg-indigo-600 text-white font-bold shadow'
-                  : 'text-white/60 hover:text-white hover:bg-white/5'
-              }`}
-              title="Short: Direct summary with key bullet points and timestamps"
-            >
-              <span>⚡ Short</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setAnswerLength('long')}
-              className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 ${
-                answerLength === 'long'
-                  ? 'bg-indigo-600 text-white font-bold shadow'
-                  : 'text-white/60 hover:text-white hover:bg-white/5'
-              }`}
-              title="Detailed: Exhaustive, step-by-step conceptual breakdown"
-            >
-              <span>📚 Detailed</span>
-            </button>
+        {/* Controls Bar: Answer Detail Level & Timestamps Inclusion */}
+        <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+          {/* Detail Level Selector */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-indigo-300 font-mono font-bold uppercase tracking-wider flex items-center gap-1">
+              <Sparkles className="w-2.5 h-2.5 text-indigo-400" />
+              <span>Detail:</span>
+            </span>
+            <div className="flex items-center gap-0.5 p-0.5 bg-[#18181b] rounded-lg border border-white/10 text-[10px] font-mono">
+              <button
+                type="button"
+                onClick={() => setAnswerLength('short')}
+                className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 ${
+                  answerLength === 'short'
+                    ? 'bg-indigo-600 text-white font-bold shadow'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
+                title="Focused: Crisp, high-density summary (~120-180 words) with core intuition and 2-3 key takeaways"
+              >
+                <span>⚡ Focused</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAnswerLength('long')}
+                className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 ${
+                  answerLength === 'long'
+                    ? 'bg-indigo-600 text-white font-bold shadow'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
+                title="Deep-Dive: Comprehensive masterclass breakdown with exhaustive step-by-step mechanics"
+              >
+                <span>📚 Deep-Dive</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Timestamps Toggle */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-zinc-400 font-mono font-bold uppercase tracking-wider flex items-center gap-1">
+              <Clock className="w-2.5 h-2.5 text-emerald-400" />
+              <span>Timestamps:</span>
+            </span>
+            <div className="flex items-center gap-0.5 p-0.5 bg-[#18181b] rounded-lg border border-white/10 text-[10px] font-mono">
+              <button
+                type="button"
+                onClick={() => setIncludeTimestamps(true)}
+                className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 ${
+                  includeTimestamps
+                    ? 'bg-emerald-600 text-white font-bold shadow'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
+                title="With Timestamps: Includes clickable [MM:SS] video citations and moments"
+              >
+                <span>⏱️ With Time</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIncludeTimestamps(false)}
+                className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 ${
+                  !includeTimestamps
+                    ? 'bg-zinc-700 text-white font-bold shadow'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
+                title="Without Timestamps: Direct, clean plain answers without timestamp markers"
+              >
+                <span>💬 Plain (No Time)</span>
+              </button>
+            </div>
           </div>
         </div>
 

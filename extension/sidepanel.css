@@ -900,11 +900,18 @@ body {
   flex-shrink: 0;
 }
 
-.detail-control {
+.footer-controls-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   margin-bottom: 8px;
+}
+
+.detail-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .detail-label {

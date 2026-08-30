@@ -3,81 +3,104 @@ import { AI_PROVIDERS } from '../data/providers';
 
 // Helper to extract [MM:SS] or [HH:MM:SS] citations
 export function extractCitationsFromText(text: string): Array<{ formattedTime: string; seconds: number }> {
-  const citationRegex = /\[?(\d{1,2}:)?(\d{1,2}:\d{2})\]?/g;
+  if (!text) return [];
+  // Match [MM:SS], [HH:MM:SS], (MM:SS), or isolated MM:SS citations
+  const citationRegex = /(?:\[|\(|\b)(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?:\]|\)|\b)/g;
   const citations: Array<{ formattedTime: string; seconds: number }> = [];
   const seen = new Set<string>();
 
   let match;
   while ((match = citationRegex.exec(text)) !== null) {
-    const hours = match[1] || '';
-    const minSec = match[2];
-    const fullTime = hours + minSec;
-    if (seen.has(fullTime)) continue;
-    seen.add(fullTime);
+    const hours = match[1] ? parseInt(match[1], 10) : 0;
+    const minutes = parseInt(match[2], 10);
+    const seconds = parseInt(match[3], 10);
+    
+    // Ignore invalid timestamps (e.g. 99:99)
+    if (seconds >= 60 || (match[1] && minutes >= 60)) continue;
 
-    const parts = fullTime.split(':').map(Number);
-    let totalSec = 0;
-    if (parts.length === 2) {
-      totalSec = parts[0] * 60 + parts[1];
-    } else if (parts.length === 3) {
-      totalSec = parts[0] * 3600 + parts[1] * 60 + parts[2];
-    }
+    const formattedTime = hours > 0 
+      ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+      : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
-    citations.push({ formattedTime: fullTime, seconds: totalSec });
+    if (seen.has(formattedTime)) continue;
+    seen.add(formattedTime);
+
+    const totalSec = hours * 3600 + minutes * 60 + seconds;
+    citations.push({ formattedTime, seconds: totalSec });
   }
 
-  return citations.slice(0, 6);
+  return citations.slice(0, 8);
 }
 
 export function buildSystemPrompt(params: {
   videoTitle: string;
   transcriptText: string;
   answerLength: AnswerLength;
+  includeTimestamps?: boolean;
 }): string {
-  const { videoTitle, transcriptText, answerLength } = params;
+  const { videoTitle, transcriptText, answerLength, includeTimestamps = true } = params;
 
   let lengthGuideline = '';
   if (answerLength === 'short') {
     lengthGuideline = `
-STRICT RESPONSE LENGTH REQUIREMENT: SHORT / CONCISE (⚡)
-- The user specifically selected SHORT mode.
-- Provide a direct 2-3 sentence answer with bold terms.
-- Provide 2 to 3 bullet points with exact video timestamp citations formatted as [MM:SS].
-- If explaining mathematical concepts, format them in standard LaTeX ($x = y$).
-- End with a single-sentence takeaway. Total length ~120 words.`;
+RESPONSE DEPTH & QUALITY GUIDELINES: FOCUSED SUMMARY MODE (⚡)
+- Provide a crisp, concise, high-density summary (approx. 120-180 words, ~half of a standard long answer) that captures the core essence directly without fluff.
+- Structure:
+  1. Core Insight (1 short paragraph, 2-3 sentences): Direct answer explaining the primary concept and key intuition.
+  2. Key Takeaways (2-3 concise bullet points): Highlight the essential points or mechanisms (1-2 sentences each)${includeTimestamps ? ' with exact [MM:SS] timestamps' : ''}. Include concise LaTeX ($...$) only if essential.
+  3. Bottom Line (1 punchy concluding sentence).
+- Be direct, informative, and to the point. Eliminate conversational filler words and redundant padding.
+- Finish all thoughts and sentences completely.`;
   } else {
     lengthGuideline = `
-STRICT RESPONSE LENGTH REQUIREMENT: DETAILED / IN-DEPTH (📚)
-- The user specifically selected DETAILED mode for an exhaustive conceptual breakdown.
-- Structure with clean Markdown subheadings (###, ####).
-- Provide step-by-step mechanics, intuitive analogies, and formulas ($...$ or $$...$$).
-- Weave rich timestamp citations [MM:SS] throughout.`;
+RESPONSE DEPTH & QUALITY GUIDELINES: DETAILED / DEEP-DIVE MODE (📚)
+- Provide an exhaustive, masterclass-level conceptual breakdown exploring all mechanics, mathematical formulations, geometric intuitions, and real-world implications.
+- Structure:
+  1. Executive Summary & Foundational Mental Model
+  2. Full Breakdown & Chapter Analysis${includeTimestamps ? ' with [MM:SS] timestamps' : ''}
+  3. Deep-Dive Step-by-Step Technical Mechanics & Formal Mathematical Formulations ($...$ and $$...$$)
+  4. Real-World Applications, Edge Cases & Practical Trade-offs
+  5. Practical Takeaways & Summary${includeTimestamps ? '\n- WEAVE rich, exact timestamp citations [MM:SS] throughout each section.' : ''}`;
   }
+
+  const timestampInstruction = includeTimestamps
+    ? `CRITICAL TIMESTAMP ACCURACY & CITATION RULES:
+1. GROUND TIMESTAMPS STRICTLY IN THE TRANSCRIPT:
+   - Always include timestamp citations formatted strictly with square brackets like [MM:SS] or [HH:MM:SS] (e.g. "[02:15]", "[12:30]").
+   - Every timestamp you cite MUST correspond to the exact moment in the transcript where that topic begins or is discussed.
+   - NEVER fabricate or guess random timestamps (like "[00:00]" or "[01:00]") unless that exact moment in the transcript discusses that topic.
+   - For video summaries, list key moments in chronological order so the user can easily click to jump to that moment in the video.`
+    : `STRICT TIMESTAMP SETTING: NO TIMESTAMPS (PLAIN ANSWER MODE)
+- The user has specifically requested an answer WITHOUT timestamps or time markers.
+- DO NOT include any timestamp citations, time codes, minute/second markers, or [MM:SS] / [HH:MM:SS] brackets anywhere in your output.
+- Present all explanations, steps, summaries, and concepts in clean, natural prose and structured markdown without time tags.`;
 
   return `You are Insight.ai, an expert AI tutor and video learning co-pilot watching this YouTube video alongside the user.
 
 YOUR MISSION:
-Act as an articulate, encouraging master tutor. Explain concepts accurately based on the video context and transcript.
+Act as an articulate, encouraging master tutor. Explain concepts accurately and provide structured summaries grounded strictly in the video transcript and context.
 
 ${lengthGuideline}
 
-FORMATTING RULES:
-1. CITATIONS: Always include exact timestamp citations formatted as [MM:SS] or [HH:MM:SS] (e.g. "[04:30]").
-2. MATH: Format all equations using standard LaTeX ($E = mc^2$ or $$\\int x dx$$).
-3. QUIZZES & TESTS: When the user asks for a quiz or multiple-choice questions (e.g., "quiz me", "test me", "Quiz My Knowledge"):
-   - Provide a 1-sentence intro (e.g., "Here is an interactive 3-question quiz to test your comprehension of this video:").
-   - Then provide a complete, well-formed JSON array enclosed strictly inside a \`\`\`json ... \`\`\` code block.
-   - Do not output empty markdown lines or divider lines like ---.
-   - Each item in the array MUST be a JSON object with:
-     * "question": string
-     * "options": array of 4 string choices (e.g. ["A) ...", "B) ...", "C) ...", "D) ..."])
-     * "correctIndex": number (0 to 3)
-     * "explanation": string (explaining why the answer is correct)
-     * "timestamp": string (citation like "03:20")
+${timestampInstruction}
+
+2. MATH & FORMULAS:
+   - Format all equations using standard LaTeX ($E = mc^2$ or $$\\int_a^b f(x) dx$$).
+
+3. QUIZZES & TESTS:
+   - When the user asks for a quiz or multiple-choice questions (e.g., "quiz me", "test me", "Quiz My Knowledge"):
+     * Provide a 1-sentence intro (e.g., "Here is an interactive 3-question quiz to test your comprehension of this video:").
+     * Then provide a complete, well-formed JSON array enclosed strictly inside a \`\`\`json ... \`\`\` code block.
+     * Each item in the array MUST be a JSON object with:
+       - "question": string
+       - "options": array of 4 string choices (e.g. ["A) ...", "B) ...", "C) ...", "D) ..."])
+       - "correctIndex": number (0 to 3)
+       - "explanation": string (explaining why the answer is correct)
+       - "timestamp": string (citation like "03:20" matching the transcript)
 
 VIDEO TITLE: "${videoTitle || 'YouTube Video'}"
 
-VIDEO TRANSCRIPT & CONTEXT:
+FULL VIDEO TRANSCRIPT & TIMESTAMPS:
 ${transcriptText || 'Transcript unavailable. Use video title and context.'}`;
 }
 
@@ -91,6 +114,7 @@ export async function executeClientSideChat(params: {
   messages: Array<{ sender: string; text: string }>;
   userQuestion: string;
   answerLength: AnswerLength;
+  includeTimestamps?: boolean;
 }): Promise<string> {
   const {
     provider,
@@ -100,12 +124,13 @@ export async function executeClientSideChat(params: {
     systemPrompt,
     messages,
     userQuestion,
-    answerLength
+    answerLength,
+    includeTimestamps = true
   } = params;
 
   const key = (apiKey || '').trim();
   const isQuizQuery = /quiz|test|mcq|question|exam|trivia/i.test(userQuestion);
-  const maxTokens = isQuizQuery ? 2500 : (answerLength === 'short' ? 800 : 2500);
+  const maxTokens = isQuizQuery ? 3000 : (answerLength === 'short' ? 2048 : 3500);
   const pInfo = AI_PROVIDERS[provider] || AI_PROVIDERS.gemini;
   const selectedModel = model || pInfo.defaultModel;
 

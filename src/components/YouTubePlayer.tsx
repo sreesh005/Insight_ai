@@ -30,7 +30,13 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
 
   // Construct iframe embed URL with optional start timestamp
   const baseUrl = useNoCookie ? 'https://www.youtube-nocookie.com' : 'https://www.youtube.com';
-  const embedUrl = `${baseUrl}/embed/${videoId}?enablejsapi=1&autoplay=0&rel=0&modestbranding=1${startSec > 0 ? `&start=${startSec}` : ''}`;
+  const originParam = typeof window !== 'undefined' && window.location?.origin ? `&origin=${encodeURIComponent(window.location.origin)}` : '';
+  const embedUrl = `${baseUrl}/embed/${videoId}?enablejsapi=1&autoplay=0&rel=0&modestbranding=1&playsinline=1${originParam}${startSec > 0 ? `&start=${startSec}` : ''}`;
+  const [isIframeLoaded, setIsIframeLoaded] = useState<boolean>(false);
+
+  useEffect(() => {
+    setIsIframeLoaded(false);
+  }, [videoId, useNoCookie]);
 
   // Initialize YT IFrame API
   useEffect(() => {
@@ -143,6 +149,24 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   return (
     <div className="flex flex-col gap-2">
       <div className="aspect-video w-full bg-black rounded-2xl relative border border-white/10 overflow-hidden shadow-2xl group">
+        {/* Instant Thumbnail Backdrop */}
+        {!isIframeLoaded && (
+          <div className="absolute inset-0 z-0 flex items-center justify-center bg-black">
+            <img
+              src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`}
+              alt="Video thumbnail"
+              className="w-full h-full object-cover opacity-60 filter blur-xs"
+              referrerPolicy="no-referrer"
+            />
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/80 border border-white/10 text-xs text-white/80 font-mono">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                <span>Loading video stream...</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <iframe
           ref={iframeRef}
           key={`${videoId}-${useNoCookie ? 'nocookie' : 'std'}`}
@@ -150,6 +174,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
           className="w-full h-full border-0 absolute inset-0 z-10"
           src={embedUrl}
           title="YouTube video player"
+          onLoad={() => setIsIframeLoaded(true)}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
           referrerPolicy="strict-origin-when-cross-origin"
