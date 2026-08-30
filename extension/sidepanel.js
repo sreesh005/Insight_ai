@@ -27,7 +27,7 @@ let providerKeys = {
   custom: ''
 };
 let providerModels = {
-  gemini: 'gemini-2.5-flash',
+  gemini: 'gemini-2.0-flash',
   groq: 'llama-3.3-70b-versatile',
   openai: 'gpt-4o-mini',
   claude: 'claude-3-5-haiku-20241022',
@@ -51,7 +51,7 @@ const PROVIDERS = {
     step2: 'Click <strong>Create API key</strong> (instant, no credit card).',
     placeholder: 'Paste Google AI key (AIzaSy...)',
     models: [
-      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Recommended - Ultra Fast)' },
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (Recommended - Fastest & Free)' },
       { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
       { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Deep Reasoning)' },
       { id: 'custom', name: 'Custom Model ID...' }

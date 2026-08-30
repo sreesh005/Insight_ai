@@ -16,10 +16,12 @@ interface InteractiveQuizWidgetProps {
 
 const timeToSeconds = (timeStr: string): number => {
   if (!timeStr) return 0;
-  const parts = timeStr.split(':').map(Number);
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  return 0;
+  const match = timeStr.match(/(?:(\d{1,2}):)?(\d{1,2}):(\d{2})/);
+  if (!match) return 0;
+  const hours = match[1] ? parseInt(match[1], 10) : 0;
+  const minutes = parseInt(match[2], 10);
+  const seconds = parseInt(match[3], 10);
+  return hours * 3600 + minutes * 60 + seconds;
 };
 
 export const InteractiveQuizWidget: React.FC<InteractiveQuizWidgetProps> = ({ questions, onSeek }) => {

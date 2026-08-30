@@ -410,7 +410,7 @@ Click any timestamp above to test real-time seeking in the player!`;
                       <span>Google Gemini</span>
                     </div>
                     <p className="text-[10px] text-emerald-400 font-medium">100% Free Forever</p>
-                    <p className="text-[10px] text-white/50">1,500 queries/day on Gemini 2.5 Flash with no credit card required.</p>
+                    <p className="text-[10px] text-white/50">1,500 queries/day on Gemini 2.0 Flash with no credit card required.</p>
                   </div>
 
                   <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-1">

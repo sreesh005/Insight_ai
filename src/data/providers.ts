@@ -44,11 +44,11 @@ export const AI_PROVIDERS: Record<AIProvider, ProviderInfo> = {
     getKeyText: 'Get Free Gemini Key ↗',
     desc: 'Generous free tier with 1,500 free queries/day from Google AI Studio. Zero payment required.',
     placeholder: 'AIzaSy...',
-    defaultModel: 'gemini-2.5-flash',
+    defaultModel: 'gemini-2.0-flash',
     models: [
-      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', badge: 'Fastest' },
-      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
-      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', badge: 'Deep Reasoning' },
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (Fastest & Free)', badge: 'Recommended' },
+      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Standard Free)' },
+      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Deep Reasoning)', badge: 'Deep Reasoning' },
       { id: 'custom', name: 'Custom Model ID...' }
     ]
   },

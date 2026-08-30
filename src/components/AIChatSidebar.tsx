@@ -24,24 +24,89 @@ interface AIChatSidebarProps {
 
 // Helper to convert formatted time string like "12:30" or "01:15:20" to seconds
 const timeToSeconds = (timeStr: string): number => {
-  const parts = timeStr.split(':').map(Number);
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  return 0;
+  if (!timeStr) return 0;
+  const match = timeStr.match(/(?:(\d{1,2}):)?(\d{1,2}):(\d{2})/);
+  if (!match) return 0;
+  const hours = match[1] ? parseInt(match[1], 10) : 0;
+  const minutes = parseInt(match[2], 10);
+  const seconds = parseInt(match[3], 10);
+  return hours * 3600 + minutes * 60 + seconds;
 };
 
-// Helper to detect and extract JSON Quiz data from assistant text
+// Helper to clean timestamp from raw or link formats like "[10:15]", " [10:15](#timestamp-615) ", "10:15", "01:15:20"
+const cleanTimestamp = (ts?: string): string => {
+  if (!ts) return '';
+  const match = ts.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+  return match ? match[1] : ts.replace(/[[\]()#]/g, '').trim();
+};
+
+// Helper to sanitize quiz questions parsed from LLM JSON
+const sanitizeQuizQuestions = (rawQuestions: any[]): QuizQuestion[] => {
+  if (!Array.isArray(rawQuestions)) return [];
+  return rawQuestions
+    .filter((q) => q && typeof q.question === 'string' && Array.isArray(q.options) && q.options.length >= 2)
+    .map((q) => {
+      let correctIdx = typeof q.correctIndex === 'number' ? q.correctIndex : 0;
+      if (typeof q.correctIndex === 'string') {
+        const parsed = parseInt(q.correctIndex, 10);
+        if (!isNaN(parsed)) correctIdx = parsed;
+        else if (/^[A-D]$/i.test(q.correctIndex)) {
+          correctIdx = q.correctIndex.toUpperCase().charCodeAt(0) - 65;
+        }
+      }
+      return {
+        question: q.question.trim(),
+        options: q.options.map((opt: any) => String(opt).trim()),
+        correctIndex: Math.min(Math.max(0, correctIdx), q.options.length - 1),
+        explanation: (q.explanation || 'Refer to the video timestamp to review this concept.').trim(),
+        timestamp: cleanTimestamp(q.timestamp)
+      };
+    });
+};
+
+// Helper to detect and extract JSON Quiz data from assistant text (code fence OR raw array)
 const extractQuizFromText = (text: string): { markdownText: string; quizQuestions: QuizQuestion[] | null } => {
-  const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
-  if (jsonMatch && jsonMatch[1]) {
+  if (!text) return { markdownText: '', quizQuestions: null };
+
+  // 1. Try code blocks (```json ... ``` or ``` ... ```)
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch && codeBlockMatch[1]) {
     try {
-      const parsed = JSON.parse(jsonMatch[1]);
-      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].question && parsed[0].options) {
-        const markdownText = text.replace(/```json\s*[\s\S]*?\s*```/, '').trim();
-        return { markdownText, quizQuestions: parsed };
+      const parsed = JSON.parse(codeBlockMatch[1]);
+      const sanitized = sanitizeQuizQuestions(parsed);
+      if (sanitized.length > 0) {
+        const cleanedText = text.replace(/```(?:json)?\s*[\s\S]*?\s*```/i, '').trim();
+        return { markdownText: cleanedText, quizQuestions: sanitized };
       }
     } catch (e) {}
   }
+
+  // 2. Try raw JSON array starting with [ and ending with ] containing "question"
+  const rawArrayMatch = text.match(/\[\s*\{\s*"question"[\s\S]*\}\s*\]/);
+  if (rawArrayMatch && rawArrayMatch[0]) {
+    try {
+      const parsed = JSON.parse(rawArrayMatch[0]);
+      const sanitized = sanitizeQuizQuestions(parsed);
+      if (sanitized.length > 0) {
+        const cleanedText = text.replace(rawArrayMatch[0], '').trim();
+        return { markdownText: cleanedText, quizQuestions: sanitized };
+      }
+    } catch (e) {
+      // Try relaxed cleanup (trailing commas or escaped quotes)
+      try {
+        const sanitizedStr = rawArrayMatch[0]
+          .replace(/,\s*([\]}])/g, '$1')
+          .replace(/\\'/g, "'");
+        const parsed = JSON.parse(sanitizedStr);
+        const sanitized = sanitizeQuizQuestions(parsed);
+        if (sanitized.length > 0) {
+          const cleanedText = text.replace(rawArrayMatch[0], '').trim();
+          return { markdownText: cleanedText, quizQuestions: sanitized };
+        }
+      } catch (e2) {}
+    }
+  }
+
   return { markdownText: text, quizQuestions: null };
 };
 
@@ -58,10 +123,19 @@ const FormattedChatMessage: React.FC<{
     .replace(/\\\(([\s\S]*?)\\\)/g, '$ $1 $');
 
   // Convert [MM:SS] or [HH:MM:SS] to markdown timestamp anchors [MM:SS](#timestamp-sec)
-  const processedText = normalizedMathText.replace(/\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?/g, (match, timeStr) => {
-    const seconds = timeToSeconds(timeStr);
-    return ` [${timeStr}](#timestamp-${seconds}) `;
-  });
+  // Be careful NOT to replace timestamps that are already inside markdown anchors or URLs
+  const processedText = normalizedMathText.replace(
+    /(?:\[)?(\b\d{1,2}:\d{2}(?::\d{2})?\b)(?:\])?(?!\(#timestamp-)/g,
+    (match, timeStr, offset, fullStr) => {
+      // Check if it's preceded by (#timestamp- or inside a link URL
+      const prevSub = fullStr.slice(Math.max(0, offset - 15), offset);
+      if (prevSub.includes('#timestamp-') || prevSub.includes('(')) {
+        return match;
+      }
+      const seconds = timeToSeconds(timeStr);
+      return ` [${timeStr}](#timestamp-${seconds}) `;
+    }
+  );
 
   return (
     <div className="text-xs sm:text-sm text-white/90 leading-relaxed space-y-2">
@@ -77,7 +151,7 @@ const FormattedChatMessage: React.FC<{
                   <button
                     type="button"
                     onClick={() => onSeek(sec)}
-                    className="inline-flex items-center gap-1 font-mono text-xs px-1.5 py-0.5 mx-1 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600 hover:text-white transition-all cursor-pointer font-bold underline decoration-indigo-400/40"
+                    className="inline-flex items-center gap-1 font-mono text-xs px-2 py-0.5 mx-1 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-600 hover:text-white transition-all cursor-pointer font-bold shadow-sm"
                     title={`Jump video to ${children}`}
                   >
                     <Play className="w-2.5 h-2.5 fill-current" />
@@ -102,11 +176,35 @@ const FormattedChatMessage: React.FC<{
                 </a>
               );
             },
-            strong: ({ children }) => <strong className="font-bold text-white bg-indigo-500/10 px-1 py-0.5 rounded border border-indigo-500/20">{children}</strong>,
+            h1: ({ children }) => <h1 className="text-base font-bold text-white mt-3 mb-1.5 pb-1 border-b border-white/10">{children}</h1>,
+            h2: ({ children }) => <h2 className="text-sm font-bold text-white mt-2.5 mb-1 text-indigo-300">{children}</h2>,
+            h3: ({ children }) => <h3 className="text-xs font-bold text-indigo-200 mt-2 mb-1 uppercase tracking-wider">{children}</h3>,
+            h4: ({ children }) => <h4 className="text-xs font-semibold text-white/90 mt-1 mb-0.5">{children}</h4>,
+            strong: ({ children }) => <strong className="font-bold text-white bg-indigo-500/15 px-1 py-0.5 rounded border border-indigo-500/25">{children}</strong>,
             p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
-            ul: ({ children }) => <ul className="list-disc list-inside space-y-1 my-2">{children}</ul>,
-            ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 my-2">{children}</ol>,
-            li: ({ children }) => <li className="text-white/80">{children}</li>,
+            ul: ({ children }) => <ul className="list-disc list-inside space-y-1 my-2 text-white/85">{children}</ul>,
+            ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 my-2 text-white/85">{children}</ol>,
+            li: ({ children }) => <li className="text-white/85 leading-relaxed">{children}</li>,
+            blockquote: ({ children }) => (
+              <blockquote className="border-l-2 border-indigo-500/60 pl-3 py-1 my-2 bg-white/[0.02] rounded-r text-white/80 italic text-xs">
+                {children}
+              </blockquote>
+            ),
+            code: ({ children, className }) => {
+              const isInline = !className;
+              if (isInline) {
+                return (
+                  <code className="px-1.5 py-0.5 mx-0.5 rounded bg-black/40 text-indigo-300 border border-white/10 font-mono text-[11px]">
+                    {children}
+                  </code>
+                );
+              }
+              return (
+                <pre className="p-3 my-2 rounded-xl bg-black/60 border border-white/10 overflow-x-auto text-[11px] font-mono text-emerald-300">
+                  <code>{children}</code>
+                </pre>
+              );
+            }
           }}
         >
           {processedText}

@@ -35,9 +35,14 @@ export default function App() {
   });
   const [providerModels, setProviderModels] = useState<Record<string, string>>(() => {
     try {
-      return JSON.parse(localStorage.getItem('insight_web_models') || '{}');
+      const parsed = JSON.parse(localStorage.getItem('insight_web_models') || '{}');
+      if (parsed.gemini === 'gemini-2.5-flash' || parsed.gemini === 'gemini-3.6-flash' || !parsed.gemini) {
+        parsed.gemini = 'gemini-2.0-flash';
+        localStorage.setItem('insight_web_models', JSON.stringify(parsed));
+      }
+      return parsed;
     } catch {
-      return {};
+      return { gemini: 'gemini-2.0-flash' };
     }
   });
   const [customBaseUrl, setCustomBaseUrl] = useState<string>(() => {
@@ -520,7 +525,11 @@ To get AI-powered tutoring, timestamped citations, quiz generation, and math exp
       <FooterBar
         wordCount={wordCount}
         chapterCount={currentVideo.chapters.length}
+        activeProvider={activeProvider}
+        activeModel={providerModels[activeProvider]}
+        hasActiveKey={hasActiveKey}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
+        onOpenAIProvider={() => setIsAIProviderModalOpen(true)}
       />
 
       {/* AI Provider & Key Settings Modal */}
