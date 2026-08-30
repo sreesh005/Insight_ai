@@ -64,8 +64,16 @@ ${lengthGuideline}
 FORMATTING RULES:
 1. CITATIONS: Always include exact timestamp citations formatted as [MM:SS] or [HH:MM:SS] (e.g. "[04:30]").
 2. MATH: Format all equations using standard LaTeX ($E = mc^2$ or $$\\int x dx$$).
-3. QUIZZES: If the user asks for a quiz or multiple-choice questions, ALWAYS output a valid JSON array inside a \`\`\`json ... \`\`\` code block.
-   Each item in the array MUST have: "question" (string), "options" (array of 4 strings like ["A) ...", "B) ...", "C) ...", "D) ..."]), "correctIndex" (integer 0-3), "explanation" (string), "timestamp" (string like "03:20").
+3. QUIZZES & TESTS: When the user asks for a quiz or multiple-choice questions (e.g., "quiz me", "test me", "Quiz My Knowledge"):
+   - Provide a 1-sentence intro (e.g., "Here is an interactive 3-question quiz to test your comprehension of this video:").
+   - Then provide a complete, well-formed JSON array enclosed strictly inside a \`\`\`json ... \`\`\` code block.
+   - Do not output empty markdown lines or divider lines like ---.
+   - Each item in the array MUST be a JSON object with:
+     * "question": string
+     * "options": array of 4 string choices (e.g. ["A) ...", "B) ...", "C) ...", "D) ..."])
+     * "correctIndex": number (0 to 3)
+     * "explanation": string (explaining why the answer is correct)
+     * "timestamp": string (citation like "03:20")
 
 VIDEO TITLE: "${videoTitle || 'YouTube Video'}"
 
@@ -96,7 +104,8 @@ export async function executeClientSideChat(params: {
   } = params;
 
   const key = (apiKey || '').trim();
-  const maxTokens = answerLength === 'short' ? 800 : 2500;
+  const isQuizQuery = /quiz|test|mcq|question|exam|trivia/i.test(userQuestion);
+  const maxTokens = isQuizQuery ? 2500 : (answerLength === 'short' ? 800 : 2500);
   const pInfo = AI_PROVIDERS[provider] || AI_PROVIDERS.gemini;
   const selectedModel = model || pInfo.defaultModel;
 

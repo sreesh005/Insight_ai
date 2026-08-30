@@ -815,14 +815,47 @@ function formatSeconds(totalSec) {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
-// Parse text into HTML with clickable interactive timestamps [MM:SS]
+// Parse text into HTML with clickable interactive timestamps [MM:SS] and interactive quiz format
 function formatMessageContent(text) {
   if (!text) return '';
 
-  let html = text
+  // Try extracting JSON quiz
+  let quizHtml = '';
+  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || text.match(/\[\s*\{\s*"question"[\s\S]*\}\s*\]/);
+  if (jsonMatch) {
+    try {
+      const rawJson = jsonMatch[1] || jsonMatch[0];
+      const questions = JSON.parse(rawJson);
+      if (Array.isArray(questions) && questions.length > 0) {
+        text = text.replace(jsonMatch[0], '').trim();
+        quizHtml = `
+          <div class="extension-quiz-box" style="margin-top:10px; padding:12px; border-radius:10px; background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.3);">
+            <div style="font-weight:bold; font-size:12px; margin-bottom:8px; color:#a5b4fc;">🎯 Interactive Video Quiz (${questions.length} Questions)</div>
+            ${questions.map((q, qIdx) => `
+              <div style="margin-bottom:12px; padding:8px; border-radius:6px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08);">
+                <div style="font-weight:600; font-size:11px; margin-bottom:6px;">Q${qIdx + 1}. ${q.question}</div>
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                  ${(q.options || []).map((opt, oIdx) => `
+                    <button class="quiz-opt-btn" onclick="this.parentElement.querySelectorAll('button').forEach(b => b.disabled = true); if(${oIdx} === ${q.correctIndex || 0}) { this.style.background='rgba(16,185,129,0.3)'; this.style.borderColor='#10b981'; this.innerHTML += ' ✅ (Correct)'; } else { this.style.background='rgba(244,63,94,0.3)'; this.style.borderColor='#f43f5e'; this.innerHTML += ' ❌'; }" style="text-align:left; font-size:11px; padding:6px 8px; border-radius:4px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:white; cursor:pointer;">${opt}</button>
+                  `).join('')}
+                </div>
+                ${q.timestamp ? `<div style="font-size:10px; color:#94a3b8; margin-top:6px;"><button class="timestamp-link" data-seconds="${formatTimestampToSeconds(q.timestamp)}">⏱️ Review at [${q.timestamp}]</button></div>` : ''}
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+    } catch (e) {}
+  }
+
+  let html = (text || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+
+  // Convert markdown headers
+  html = html.replace(/^### (.*$)/gim, '<h4 style="color:#a5b4fc; font-size:12px; margin:8px 0 4px;">$1</h4>');
+  html = html.replace(/^## (.*$)/gim, '<h3 style="color:#c7d2fe; font-size:13px; margin:10px 0 4px;">$1</h3>');
 
   // Convert markdown bold **text** -> <strong>text</strong>
   html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
@@ -847,10 +880,20 @@ function formatMessageContent(text) {
 
   // Convert newlines to paragraphs/breaks
   const paragraphs = html.split(/\n\n+/);
-  return paragraphs.map(p => {
-    if (p.startsWith('<ul>') || p.startsWith('<ol>')) return p;
+  const formattedHtml = paragraphs.map(p => {
+    if (!p.trim()) return '';
+    if (p.startsWith('<ul>') || p.startsWith('<ol>') || p.startsWith('<h')) return p;
     return `<p>${p.replace(/\n/g, '<br/>')}</p>`;
   }).join('');
+
+  return formattedHtml + quizHtml;
+}
+
+function formatTimestampToSeconds(ts) {
+  if (!ts) return 0;
+  const match = ts.match(/(\d{1,2}):(\d{2})/);
+  if (!match) return 0;
+  return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
 }
 
 // Append message element to DOM

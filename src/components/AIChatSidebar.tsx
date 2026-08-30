@@ -64,7 +64,7 @@ const sanitizeQuizQuestions = (rawQuestions: any[]): QuizQuestion[] => {
     });
 };
 
-// Helper to detect and extract JSON Quiz data from assistant text (code fence OR raw array)
+// Helper to detect and extract Quiz data from assistant text (code fence, raw JSON, or markdown quiz)
 const extractQuizFromText = (text: string): { markdownText: string; quizQuestions: QuizQuestion[] | null } => {
   if (!text) return { markdownText: '', quizQuestions: null };
 
@@ -75,8 +75,10 @@ const extractQuizFromText = (text: string): { markdownText: string; quizQuestion
       const parsed = JSON.parse(codeBlockMatch[1]);
       const sanitized = sanitizeQuizQuestions(parsed);
       if (sanitized.length > 0) {
-        const cleanedText = text.replace(/```(?:json)?\s*[\s\S]*?\s*```/i, '').trim();
-        return { markdownText: cleanedText, quizQuestions: sanitized };
+        let cleanedText = text.replace(/```(?:json)?\s*[\s\S]*?\s*```/i, '').trim();
+        // Clean leading/trailing horizontal rules or orphan headers
+        cleanedText = cleanedText.replace(/^(\s*[-*_]{3,}\s*)+/g, '').replace(/(\s*[-*_]{3,}\s*)+$/g, '').trim();
+        return { markdownText: cleanedText || 'Here is your interactive quiz:', quizQuestions: sanitized };
       }
     } catch (e) {}
   }
@@ -88,8 +90,9 @@ const extractQuizFromText = (text: string): { markdownText: string; quizQuestion
       const parsed = JSON.parse(rawArrayMatch[0]);
       const sanitized = sanitizeQuizQuestions(parsed);
       if (sanitized.length > 0) {
-        const cleanedText = text.replace(rawArrayMatch[0], '').trim();
-        return { markdownText: cleanedText, quizQuestions: sanitized };
+        let cleanedText = text.replace(rawArrayMatch[0], '').trim();
+        cleanedText = cleanedText.replace(/^(\s*[-*_]{3,}\s*)+/g, '').replace(/(\s*[-*_]{3,}\s*)+$/g, '').trim();
+        return { markdownText: cleanedText || 'Here is your interactive quiz:', quizQuestions: sanitized };
       }
     } catch (e) {
       // Try relaxed cleanup (trailing commas or escaped quotes)
@@ -100,10 +103,74 @@ const extractQuizFromText = (text: string): { markdownText: string; quizQuestion
         const parsed = JSON.parse(sanitizedStr);
         const sanitized = sanitizeQuizQuestions(parsed);
         if (sanitized.length > 0) {
-          const cleanedText = text.replace(rawArrayMatch[0], '').trim();
-          return { markdownText: cleanedText, quizQuestions: sanitized };
+          let cleanedText = text.replace(rawArrayMatch[0], '').trim();
+          cleanedText = cleanedText.replace(/^(\s*[-*_]{3,}\s*)+/g, '').replace(/(\s*[-*_]{3,}\s*)+$/g, '').trim();
+          return { markdownText: cleanedText || 'Here is your interactive quiz:', quizQuestions: sanitized };
         }
       } catch (e2) {}
+    }
+  }
+
+  // 3. Fallback: Parse individual question objects using regex in case array syntax was broken
+  const objectMatches = text.match(/\{\s*"question"\s*:\s*"[^"]+"[\s\S]*?"options"\s*:\s*\[[\s\S]*?\][\s\S]*?\}/g);
+  if (objectMatches && objectMatches.length > 0) {
+    const extractedList: any[] = [];
+    for (const objStr of objectMatches) {
+      try {
+        const parsedObj = JSON.parse(objStr);
+        if (parsedObj && parsedObj.question && Array.isArray(parsedObj.options)) {
+          extractedList.push(parsedObj);
+        }
+      } catch (e) {}
+    }
+    const sanitized = sanitizeQuizQuestions(extractedList);
+    if (sanitized.length > 0) {
+      let cleanedText = text;
+      for (const objStr of objectMatches) {
+        cleanedText = cleanedText.replace(objStr, '');
+      }
+      cleanedText = cleanedText.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+      cleanedText = cleanedText.replace(/^(\s*[-*_]{3,}\s*)+/g, '').replace(/(\s*[-*_]{3,}\s*)+$/g, '').trim();
+      return { markdownText: cleanedText || 'Here is your interactive quiz:', quizQuestions: sanitized };
+    }
+  }
+
+  // 4. Fallback: Parse plain Markdown Multiple Choice Quiz (e.g. Q1. ... A) ... B) ...)
+  const markdownQuestionRegex = /(?:^|\n)(?:(?:Q|\*\*Q|Question|\d+\.)\s*(\d+)?[:.]?\s*)([^\n]+)\n+([A-D]\)?[^\n]+\n+[A-D]\)?[^\n]+(?:\n+[A-D]\)?[^\n]+)?(?:\n+[A-D]\)?[^\n]+)?)/gi;
+  const mdMatches = [...text.matchAll(markdownQuestionRegex)];
+  if (mdMatches.length >= 2) {
+    const mdQuestions: QuizQuestion[] = [];
+    for (const match of mdMatches) {
+      const qText = (match[2] || '').replace(/\*\*/g, '').trim();
+      const rawOptionsBlock = match[3] || '';
+      const optionLines = rawOptionsBlock.split('\n').map(l => l.trim()).filter(l => /^[A-D][).]/i.test(l));
+      
+      if (qText && optionLines.length >= 2) {
+        // Try to find correct answer in explanation or subsequent text
+        let correctIdx = 0;
+        const answerMatch = text.match(new RegExp(`${qText}[\\s\\S]*?(?:Answer|Correct|Option)[:\\s*]+([A-D])`, 'i'));
+        if (answerMatch && answerMatch[1]) {
+          correctIdx = answerMatch[1].toUpperCase().charCodeAt(0) - 65;
+        }
+
+        const timestampMatch = text.match(new RegExp(`${qText}[\\s\\S]*?(\\[?\\d{1,2}:\\d{2}\\]?)`));
+        const timestamp = timestampMatch ? cleanTimestamp(timestampMatch[1]) : undefined;
+
+        mdQuestions.push({
+          question: qText,
+          options: optionLines.map(opt => opt.trim()),
+          correctIndex: Math.min(Math.max(0, correctIdx), optionLines.length - 1),
+          explanation: 'Refer to the video timestamp to review this concept in detail.',
+          timestamp
+        });
+      }
+    }
+
+    if (mdQuestions.length > 0) {
+      return {
+        markdownText: 'Here is your interactive quiz based on the video:',
+        quizQuestions: mdQuestions
+      };
     }
   }
 
@@ -176,6 +243,7 @@ const FormattedChatMessage: React.FC<{
                 </a>
               );
             },
+            hr: () => <hr className="border-t border-white/10 my-3" />,
             h1: ({ children }) => <h1 className="text-base font-bold text-white mt-3 mb-1.5 pb-1 border-b border-white/10">{children}</h1>,
             h2: ({ children }) => <h2 className="text-sm font-bold text-white mt-2.5 mb-1 text-indigo-300">{children}</h2>,
             h3: ({ children }) => <h3 className="text-xs font-bold text-indigo-200 mt-2 mb-1 uppercase tracking-wider">{children}</h3>,
