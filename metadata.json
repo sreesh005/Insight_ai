@@ -1,0 +1,6 @@
+{
+  "name": "Insight.ai - YouTube Video Assistant",
+  "description": "AI assistant that analyzes full YouTube video transcripts to answer contextual questions with interactive timestamp references.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

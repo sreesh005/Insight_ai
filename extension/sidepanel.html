@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Insight.ai - YouTube Co-Pilot</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div id="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-icon">
+          <div class="play-triangle"></div>
+        </div>
+        <div class="brand-text">
+          <h1>Insight<span class="ai-badge">.ai</span></h1>
+          <span class="subtext">YouTube Co-Pilot</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="key-status-btn" title="Google Gemini Free API Key Status" class="key-status-badge">
+          <span class="key-dot" id="key-dot"></span>
+          <span id="key-status-text">Free AI Key</span>
+        </button>
+        <button id="sync-btn" title="Re-sync with Active YouTube Video" class="icon-btn sync-btn-action">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+        </button>
+        <button id="clear-chat-btn" title="Clear Chat History for this Video" class="icon-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+        </button>
+        <button id="url-toggle-btn" title="Manual Video URL Input" class="icon-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+        </button>
+        <button id="settings-toggle-btn" title="Extension Settings" class="icon-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Active Video Banner -->
+    <div id="video-banner" class="video-banner">
+      <div class="video-card-inner">
+        <div id="video-thumb-wrap" class="video-thumb-wrap hidden">
+          <img id="video-thumb-img" src="" alt="Thumbnail" />
+        </div>
+        <div class="video-info">
+          <div class="status-row">
+            <span id="video-status-tag" class="live-tag">
+              <span class="pulse-dot"></span>
+              <span id="video-status-text">Detecting YouTube video...</span>
+            </span>
+          </div>
+          <h2 id="video-title" class="video-title">Looking for active YouTube tab...</h2>
+          <div class="meta-row">
+            <span id="video-channel" class="video-channel">Open any YouTube watch page</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Free Key Banner (Shows when no key configured) -->
+    <div id="free-key-banner" class="free-key-banner hidden">
+      <div class="banner-inner">
+        <div class="banner-left">
+          <div class="banner-badge">100% Free AI</div>
+          <div class="banner-text">Connect your free Google Gemini API Key for unlimited video tutoring (0 cost).</div>
+        </div>
+        <button id="banner-setup-btn" class="banner-btn">Get Free Key</button>
+      </div>
+    </div>
+
+    <!-- Manual URL Input Panel (Collapsible) -->
+    <div id="url-panel" class="url-panel hidden">
+      <div class="url-panel-inner">
+        <input type="text" id="manual-url-input" placeholder="Paste YouTube link (e.g. youtube.com/watch?v=...)" />
+        <button id="load-url-btn" class="secondary-btn">Load</button>
+      </div>
+    </div>
+
+    <!-- Settings Panel (Collapsible) -->
+    <div id="settings-panel" class="settings-panel hidden">
+      <div class="settings-header">
+        <div class="settings-title-group">
+          <h3>AI Providers & Keys</h3>
+          <span class="free-pill" id="settings-badge-pill">Multi-LLM BYOK</span>
+        </div>
+        <button id="close-settings-btn" class="close-btn">&times;</button>
+      </div>
+      <div class="settings-content">
+        <!-- Provider Selector -->
+        <div class="provider-selector-wrap">
+          <label for="provider-select">Choose AI Provider:</label>
+          <select id="provider-select" class="provider-select">
+            <option value="gemini">✨ Google Gemini (100% Free Tier)</option>
+            <option value="groq">⚡ Groq (Ultra-Fast Free Tier)</option>
+            <option value="openai">🟢 OpenAI (GPT-4o, GPT-4o-mini)</option>
+            <option value="claude">🟣 Anthropic Claude (3.5 Sonnet / Haiku)</option>
+            <option value="deepseek">🐳 DeepSeek (Chat V3 & Reasoner R1)</option>
+            <option value="openrouter">🌐 OpenRouter (All Models & Free Tier)</option>
+            <option value="mistral">🔥 Mistral AI (Small & Codestral)</option>
+            <option value="custom">💻 Local / Custom (Ollama, LMStudio, vLLM)</option>
+          </select>
+        </div>
+
+        <!-- BYOK Card -->
+        <div class="settings-card highlight-card">
+          <div class="card-head">
+            <div class="card-head-title">
+              <span id="provider-icon" class="provider-icon">✨</span>
+              <strong id="provider-title">Google Gemini</strong>
+            </div>
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="link-btn" id="get-key-link">
+              Get Free Key &nearr;
+            </a>
+          </div>
+          
+          <p class="card-desc" id="provider-desc">
+            Google provides <strong>1,500 free queries per day</strong> with <strong>zero credit card or payment required</strong>.
+          </p>
+
+          <!-- Model Choice -->
+          <div class="form-group" id="model-group">
+            <label for="model-select">AI Model:</label>
+            <div class="model-input-wrap">
+              <select id="model-select" class="model-select"></select>
+              <input type="text" id="custom-model-input" class="custom-model-input hidden" placeholder="e.g. gpt-4o" />
+            </div>
+          </div>
+
+          <!-- Custom Base URL (shown for Custom / Local or override) -->
+          <div class="form-group hidden" id="custom-url-group">
+            <label for="custom-base-url-input">API Base URL:</label>
+            <input type="text" id="custom-base-url-input" placeholder="e.g. http://localhost:11434/v1" />
+            <p class="hint">OpenAI-compatible chat endpoint for Ollama, LocalAI, vLLM, or private servers.</p>
+          </div>
+
+          <!-- Key Input -->
+          <div class="form-group">
+            <label for="api-key-input" id="key-input-label">API Key:</label>
+            <div class="key-input-wrap">
+              <input type="password" id="api-key-input" placeholder="Paste your API key here..." autocomplete="off" />
+              <button id="toggle-key-visibility" class="mini-icon-btn" title="Toggle visibility">&#128065;</button>
+            </div>
+          </div>
+
+          <div class="key-steps" id="key-steps">
+            <div class="step-item"><span id="step-num-1">1</span> <span id="step-1-text">Click <strong>Get Free Key</strong> above.</span></div>
+            <div class="step-item"><span id="step-num-2">2</span> <span id="step-2-text">Generate your API key.</span></div>
+            <div class="step-item"><span id="step-num-3">3</span> <span>Paste your key here and click <strong>Test & Save</strong>.</span></div>
+          </div>
+
+          <div id="key-test-feedback" class="key-feedback hidden"></div>
+
+          <div class="action-row">
+            <button id="test-key-btn" class="secondary-btn">Test Key</button>
+            <button id="save-settings-btn" class="primary-btn">Save Key</button>
+          </div>
+          <div class="privacy-note">🔒 Keys are stored strictly on your local Chrome storage and never shared with anyone.</div>
+        </div>
+
+        <!-- Optional Server URL (Advanced) -->
+        <details class="advanced-section">
+          <summary>Advanced / Optional Backend Server URL</summary>
+          <div class="advanced-body">
+            <label for="server-url-input">Self-Hosted Server URL (Optional):</label>
+            <input type="text" id="server-url-input" placeholder="e.g. http://localhost:3000" />
+            <p class="hint">Optional fallback server for self-hosted instances.</p>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <!-- Standby Non-YouTube Overlay -->
+    <div id="non-yt-standby" class="non-yt-standby hidden">
+      <div class="standby-card">
+        <div class="standby-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg>
+        </div>
+        <h3>YouTube Tab Inactive</h3>
+        <p>Insight.ai is docked and waiting. Switch to any YouTube video tab or click below to open YouTube.</p>
+        <div class="standby-actions">
+          <button id="open-yt-btn" class="primary-btn">Go to YouTube</button>
+          <button id="standby-paste-btn" class="secondary-btn">Paste Video Link</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat Messages Container -->
+    <main id="chat-messages" class="chat-messages">
+      <!-- Welcome Message -->
+      <div class="message assistant-message">
+        <div class="msg-avatar">
+          <div class="avatar-bot">AI</div>
+        </div>
+        <div class="msg-body">
+          <div class="msg-author">Insight.ai Tutor</div>
+          <div class="msg-content">
+            <p>👋 Hello! I am your YouTube learning co-pilot. I automatically detect whatever video you are watching in your browser.</p>
+            <p>Ask questions, explore concepts, or click any timestamp <strong>[MM:SS]</strong> to jump right to that moment in the video!</p>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Quick Prompts Toolbar -->
+    <div class="quick-prompts">
+      <button class="prompt-chip" data-prompt="Can you give me a clear summary of the core concepts in this video with timestamp highlights?">
+        ⚡ Summary
+      </button>
+      <button class="prompt-chip" data-prompt="Can you generate an interactive 3-question multiple choice quiz on this video?">
+        🎯 Quiz Me
+      </button>
+      <button class="prompt-chip" data-prompt="What are the key technical terms and foundational definitions introduced?">
+        📚 Key Terms
+      </button>
+      <button class="prompt-chip" data-prompt="How do I apply the concepts in this video to practical projects?">
+        🛠️ Practical Use
+      </button>
+    </div>
+
+    <!-- Input Footer Area -->
+    <footer class="app-footer">
+      <!-- Detail Level Toggle -->
+      <div class="detail-control">
+        <span class="detail-label">Detail:</span>
+        <div class="detail-buttons">
+          <button id="detail-short" class="detail-btn active" data-length="short">⚡ Short</button>
+          <button id="detail-long" class="detail-btn" data-length="long">📚 Detailed</button>
+        </div>
+      </div>
+
+      <!-- Input Form -->
+      <form id="chat-form" class="chat-form">
+        <textarea id="chat-input" placeholder="Ask about this video..." rows="1"></textarea>
+        <button type="submit" id="send-btn" class="send-btn" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+        </button>
+      </form>
+    </footer>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>
