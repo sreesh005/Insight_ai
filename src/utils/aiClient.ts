@@ -127,13 +127,13 @@ export async function executeClientSideChat(params: {
       parts: [{ text: `${combinedSystem}\n${userPromptHistory}\n\nUser Question: ${userQuestion}` }]
     });
 
-    // Sanitize model name: ensure unsupported names like gemini-2.5-flash become gemini-2.0-flash
-    let primaryModel = selectedModel && selectedModel !== 'custom' ? selectedModel : 'gemini-2.0-flash';
-    if (primaryModel === 'gemini-2.5-flash' || primaryModel === 'gemini-3.6-flash') {
-      primaryModel = 'gemini-2.0-flash';
+    // Sanitize model name: ensure deprecated/unsupported names migrate to gemini-3.7-flash
+    let primaryModel = selectedModel && selectedModel !== 'custom' ? selectedModel : 'gemini-3.7-flash';
+    if (primaryModel.startsWith('gemini-1.') || primaryModel.startsWith('gemini-2.') || primaryModel === 'gemini-3.6-flash') {
+      primaryModel = 'gemini-3.7-flash';
     }
 
-    const candidateModels = [primaryModel, 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+    const candidateModels = [primaryModel, 'gemini-3.7-flash', 'gemini-flash-latest', 'gemini-3.1-pro-preview'];
     const uniqueModels = Array.from(new Set(candidateModels));
     let lastError: any = null;
 

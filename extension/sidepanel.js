@@ -27,7 +27,7 @@ let providerKeys = {
   custom: ''
 };
 let providerModels = {
-  gemini: 'gemini-2.0-flash',
+  gemini: 'gemini-3.7-flash',
   groq: 'llama-3.3-70b-versatile',
   openai: 'gpt-4o-mini',
   claude: 'claude-3-5-haiku-20241022',
@@ -51,9 +51,9 @@ const PROVIDERS = {
     step2: 'Click <strong>Create API key</strong> (instant, no credit card).',
     placeholder: 'Paste Google AI key (AIzaSy...)',
     models: [
-      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (Recommended - Fastest & Free)' },
-      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
-      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Deep Reasoning)' },
+      { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash (Recommended - Fastest & Free)' },
+      { id: 'gemini-flash-latest', name: 'Gemini Flash Latest' },
+      { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro (Deep Reasoning)' },
       { id: 'custom', name: 'Custom Model ID...' }
     ],
     isCustomEndpoint: false
@@ -943,7 +943,10 @@ async function askAI(userQuery) {
   try {
     let aiResponseText = '';
     const key = providerKeys[activeProvider] || '';
-    const selectedModel = providerModels[activeProvider] || PROVIDERS[activeProvider]?.defaultModel || 'gemini-2.5-flash';
+    let selectedModel = providerModels[activeProvider] || PROVIDERS[activeProvider]?.defaultModel || 'gemini-3.7-flash';
+    if (activeProvider === 'gemini' && (selectedModel.startsWith('gemini-1.') || selectedModel.startsWith('gemini-2.') || selectedModel === 'gemini-3.6-flash')) {
+      selectedModel = 'gemini-3.7-flash';
+    }
     const pConfig = PROVIDERS[activeProvider] || PROVIDERS.gemini;
 
     const systemInstruction = `You are Insight.ai, an expert AI tutor helping a viewer learn and master the content of a YouTube video in real-time.

@@ -36,13 +36,18 @@ export default function App() {
   const [providerModels, setProviderModels] = useState<Record<string, string>>(() => {
     try {
       const parsed = JSON.parse(localStorage.getItem('insight_web_models') || '{}');
-      if (parsed.gemini === 'gemini-2.5-flash' || parsed.gemini === 'gemini-3.6-flash' || !parsed.gemini) {
-        parsed.gemini = 'gemini-2.0-flash';
+      if (
+        !parsed.gemini ||
+        parsed.gemini.startsWith('gemini-1.') ||
+        parsed.gemini.startsWith('gemini-2.') ||
+        parsed.gemini === 'gemini-3.6-flash'
+      ) {
+        parsed.gemini = 'gemini-3.7-flash';
         localStorage.setItem('insight_web_models', JSON.stringify(parsed));
       }
       return parsed;
     } catch {
-      return { gemini: 'gemini-2.0-flash' };
+      return { gemini: 'gemini-3.7-flash' };
     }
   });
   const [customBaseUrl, setCustomBaseUrl] = useState<string>(() => {

@@ -28,7 +28,7 @@ function getGenAIClient() {
 
 // Multi-model fallback execution for Gemini
 async function generateGeminiContentWithFallback(ai: any, contents: any): Promise<string> {
-  const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+  const models = ['gemini-3.7-flash', 'gemini-3.1-pro-preview', 'gemini-flash-latest'];
   let lastErr = null;
   for (const model of models) {
     try {
@@ -573,8 +573,8 @@ async function executeMultiProviderChat(params: {
   promptMessages.push(`User: ${userQuestion}`);
 
   const targetModel = model && model !== 'custom'
-    ? (model === 'gemini-2.5-flash' ? 'gemini-2.0-flash' : model)
-    : 'gemini-2.0-flash';
+    ? (model.startsWith('gemini-1.') || model.startsWith('gemini-2.') ? 'gemini-3.7-flash' : model)
+    : 'gemini-3.7-flash';
   try {
     const res = await aiClient.models.generateContent({
       model: targetModel,
